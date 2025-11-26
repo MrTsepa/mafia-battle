@@ -136,7 +136,7 @@ class DayPhaseHandler:
             
             # Then announce nomination result
             if nomination_result and (nomination_result.success or nomination_result.target is not None):
-                # Emit nomination event
+                # Emit nomination event (no context needed - nomination is parsed from speech which already has context)
                 if self.event_emitter and nomination_result.target:
                     self.event_emitter.emit_nomination(
                         player_number,

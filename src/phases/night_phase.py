@@ -37,6 +37,19 @@ class NightPhaseHandler:
                 agent = agents[player.player_number]
                 context = agent.build_context(self.game_state)
                 
+                # Capture context for LLM agents
+                context_data = None
+                if hasattr(agent, 'build_strategic_prompt'):
+                    try:
+                        prompt = agent.build_strategic_prompt(context, "kill_claim")
+                        context_data = {
+                            "prompt": prompt,
+                            "player_role": agent.player.role.role_type.value,
+                            "player_team": agent.player.role.team.value
+                        }
+                    except:
+                        pass
+                
                 action = agent.get_night_action(context)
                 
                 if action.get("type") == "kill_claim":
@@ -51,7 +64,8 @@ class NightPhaseHandler:
                             self.event_emitter.emit_night_kill_claim(
                                 player.player_number, 
                                 target, 
-                                self.game_state.night_number
+                                self.game_state.night_number,
+                                context_data
                             )
         
         # Don makes final decision (or another mafia if Don is eliminated)
@@ -80,6 +94,19 @@ class NightPhaseHandler:
         context.private_info["mafia_kill_claims"] = kill_claims
         context.private_info["_kill_decision_context"] = True
         
+        # Capture context for LLM agents
+        context_data = None
+        if hasattr(decision_agent, 'build_strategic_prompt'):
+            try:
+                prompt = decision_agent.build_strategic_prompt(context, "kill_decision")
+                context_data = {
+                    "prompt": prompt,
+                    "player_role": decision_agent.player.role.role_type.value,
+                    "player_team": decision_agent.player.role.team.value
+                }
+            except:
+                pass
+        
         action = decision_agent.get_night_action(context)
         
         if action.get("type") == "kill_decision" or "kill_decision" in action:
@@ -101,7 +128,8 @@ class NightPhaseHandler:
                         decision_maker.player_number,
                         target,
                         is_don,
-                        self.game_state.night_number
+                        self.game_state.night_number,
+                        context_data
                     )
                 
                 self.game_state.night_kills[self.game_state.night_number] = target
@@ -126,6 +154,20 @@ class NightPhaseHandler:
         
         agent = agents[don.player_number]
         context = agent.build_context(self.game_state)
+        
+        # Capture context for LLM agents
+        context_data = None
+        if hasattr(agent, 'build_strategic_prompt'):
+            try:
+                prompt = agent.build_strategic_prompt(context, "don_check")
+                context_data = {
+                    "prompt": prompt,
+                    "player_role": agent.player.role.role_type.value,
+                    "player_team": agent.player.role.team.value
+                }
+            except:
+                pass
+        
         action = agent.get_night_action(context)
         
         if action.get("type") == "don_check":
@@ -144,7 +186,7 @@ class NightPhaseHandler:
                 
                 # Emit Don check event
                 if self.event_emitter:
-                    self.event_emitter.emit_don_check(target, result, self.game_state.night_number)
+                    self.event_emitter.emit_don_check(target, result, self.game_state.night_number, context_data)
                 
                 # Announce result
                 self.judge.announce(f"Player {target} is {result}.")
@@ -169,6 +211,20 @@ class NightPhaseHandler:
         
         agent = agents[sheriff.player_number]
         context = agent.build_context(self.game_state)
+        
+        # Capture context for LLM agents
+        context_data = None
+        if hasattr(agent, 'build_strategic_prompt'):
+            try:
+                prompt = agent.build_strategic_prompt(context, "sheriff_check")
+                context_data = {
+                    "prompt": prompt,
+                    "player_role": agent.player.role.role_type.value,
+                    "player_team": agent.player.role.team.value
+                }
+            except:
+                pass
+        
         action = agent.get_night_action(context)
         
         if action.get("type") == "sheriff_check":
@@ -187,7 +243,7 @@ class NightPhaseHandler:
                 
                 # Emit Sheriff check event
                 if self.event_emitter:
-                    self.event_emitter.emit_sheriff_check(target, result, self.game_state.night_number)
+                    self.event_emitter.emit_sheriff_check(target, result, self.game_state.night_number, context_data)
                 
                 # Announce result
                 self.judge.announce(f"Player {target} is {result}.")

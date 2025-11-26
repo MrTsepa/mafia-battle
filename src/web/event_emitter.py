@@ -50,13 +50,14 @@ class EventEmitter:
             "context": context  # Include LLM context/prompt if available
         })
     
-    def emit_nomination(self, nominator: int, target: int, success: bool, day_number: int) -> None:
+    def emit_nomination(self, nominator: int, target: int, success: bool, day_number: int, context: Optional[Dict[str, Any]] = None) -> None:
         """Emit nomination event."""
         self._emit("nomination", {
             "nominator": nominator,
             "target": target,
             "success": success,
-            "day_number": day_number
+            "day_number": day_number,
+            "context": context  # Include LLM context/prompt if available
         })
     
     def emit_voting_start(self, nominations: List[int], day_number: int) -> None:
@@ -66,12 +67,13 @@ class EventEmitter:
             "day_number": day_number
         })
     
-    def emit_vote(self, voter: int, target: int, day_number: int) -> None:
+    def emit_vote(self, voter: int, target: int, day_number: int, context: Optional[Dict[str, Any]] = None) -> None:
         """Emit individual vote event."""
         self._emit("vote", {
             "voter": voter,
             "target": target,
-            "day_number": day_number
+            "day_number": day_number,
+            "context": context  # Include LLM context/prompt if available
         })
     
     def emit_vote_results(self, vote_counts: Dict[int, int], voters: Dict[int, List[int]], day_number: int) -> None:
@@ -100,37 +102,41 @@ class EventEmitter:
             "voters": voters or []
         })
     
-    def emit_night_kill_claim(self, player_number: int, target: int, night_number: int) -> None:
+    def emit_night_kill_claim(self, player_number: int, target: int, night_number: int, context: Optional[Dict[str, Any]] = None) -> None:
         """Emit mafia kill claim event."""
         self._emit("night_kill_claim", {
             "player_number": player_number,
             "target": target,
-            "night_number": night_number
+            "night_number": night_number,
+            "context": context  # Include LLM context/prompt if available
         })
     
-    def emit_night_kill_decision(self, decision_maker: int, target: int, is_don: bool, night_number: int) -> None:
+    def emit_night_kill_decision(self, decision_maker: int, target: int, is_don: bool, night_number: int, context: Optional[Dict[str, Any]] = None) -> None:
         """Emit mafia kill decision event."""
         self._emit("night_kill_decision", {
             "decision_maker": decision_maker,
             "target": target,
             "is_don": is_don,
-            "night_number": night_number
+            "night_number": night_number,
+            "context": context  # Include LLM context/prompt if available
         })
     
-    def emit_don_check(self, target: int, result: str, night_number: int) -> None:
+    def emit_don_check(self, target: int, result: str, night_number: int, context: Optional[Dict[str, Any]] = None) -> None:
         """Emit Don check event."""
         self._emit("don_check", {
             "target": target,
             "result": result,
-            "night_number": night_number
+            "night_number": night_number,
+            "context": context  # Include LLM context/prompt if available
         })
     
-    def emit_sheriff_check(self, target: int, result: str, night_number: int) -> None:
+    def emit_sheriff_check(self, target: int, result: str, night_number: int, context: Optional[Dict[str, Any]] = None) -> None:
         """Emit Sheriff check event."""
         self._emit("sheriff_check", {
             "target": target,
             "result": result,
-            "night_number": night_number
+            "night_number": night_number,
+            "context": context  # Include LLM context/prompt if available
         })
     
     def emit_announcement(self, message: str, phase: str, day_number: int, night_number: int) -> None:

@@ -513,6 +513,13 @@
                 eventsLoaded = events.length;
                 updateGameStatus(gameState);
                 updatePlayerList(players);
+                
+                // Scroll to bottom to show newest events
+                if (eventLog) {
+                    setTimeout(() => {
+                        eventLog.scrollTop = eventLog.scrollHeight;
+                    }, 0);
+                }
             } catch (error) {
                 console.error('Error loading events:', error);
             }
@@ -577,7 +584,7 @@
                     addEvent('announcement', `Voting started! Nominated: ${data.nominations.join(', ')}`, eventTime);
                     break;
                 case 'vote':
-                    addEvent('vote', `Player ${data.voter} voted for Player ${data.target}`, eventTime);
+                    addEvent('vote', `Player ${data.voter} voted for Player ${data.target}`, eventTime, data.context);
                     break;
                 case 'vote_results':
                     let results = 'Vote results: ';
@@ -594,17 +601,17 @@
                     addEvent('elimination', `Player ${data.player_number} eliminated - ${reason}`, eventTime);
                     break;
                 case 'night_kill_claim':
-                    addEvent('night-action', `[MAFIA] Player ${data.player_number} claims kill on Player ${data.target}`, eventTime);
+                    addEvent('night-action', `[MAFIA] Player ${data.player_number} claims kill on Player ${data.target}`, eventTime, data.context);
                     break;
                 case 'night_kill_decision':
                     const role = data.is_don ? 'DON' : 'MAFIA';
-                    addEvent('night-action', `[${role}] Decides to kill Player ${data.target}`, eventTime);
+                    addEvent('night-action', `[${role}] Decides to kill Player ${data.target}`, eventTime, data.context);
                     break;
                 case 'don_check':
-                    addEvent('night-action', `[DON] Checked Player ${data.target}: ${data.result}`, eventTime);
+                    addEvent('night-action', `[DON] Checked Player ${data.target}: ${data.result}`, eventTime, data.context);
                     break;
                 case 'sheriff_check':
-                    addEvent('night-action', `[SHERIFF] Checked Player ${data.target}: ${data.result}`, eventTime);
+                    addEvent('night-action', `[SHERIFF] Checked Player ${data.target}: ${data.result}`, eventTime, data.context);
                     break;
                 case 'announcement':
                     addEvent('announcement', `[JUDGE] ${data.message}`, eventTime);
@@ -641,21 +648,45 @@
             }
         }
 
-        function addEvent(type, message, timestamp) {
+        function addEvent(type, message, timestamp, contextData = null) {
             const eventLog = document.getElementById('eventLog');
+            if (!eventLog) return;
+            
             const eventItem = document.createElement('div');
             eventItem.className = `event-item event-${type}`;
             
             const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-            eventItem.innerHTML = `
+            const hasContext = contextData && contextData.prompt;
+            
+            let html = `
                 <div class="event-time">${timeStr}</div>
                 <div class="event-content">${escapeHtml(message)}</div>
             `;
             
-            eventLog.insertBefore(eventItem, eventLog.firstChild);
+            if (hasContext) {
+                const contextId = `context-${type}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+                const promptText = contextData.prompt || '';
+                html += `
+                    <button class="speech-expand-btn" onclick="toggleContext('${contextId}')">
+                        Show LLM Context
+                    </button>
+                    <div id="${contextId}" class="context-panel" style="display: none;">
+                        <div class="context-header">LLM Prompt Context:</div>
+                        <pre>${escapeHtml(promptText)}</pre>
+                    </div>
+                `;
+            }
+            
+            eventItem.innerHTML = html;
+            eventLog.appendChild(eventItem);
             
             while (eventLog.children.length > 200) {
-                eventLog.removeChild(eventLog.lastChild);
+                const firstChild = eventLog.firstChild;
+                if (firstChild) {
+                    eventLog.removeChild(firstChild);
+                } else {
+                    break;
+                }
             }
         }
 
@@ -663,6 +694,8 @@
         
         function addSpeechEvent(data, timestamp) {
             const eventLog = document.getElementById('eventLog');
+            if (!eventLog) return;
+            
             const eventItem = document.createElement('div');
             eventItem.className = 'event-item event-speech';
             
@@ -690,10 +723,15 @@
             }
             
             eventItem.innerHTML = html;
-            eventLog.insertBefore(eventItem, eventLog.firstChild);
+            eventLog.appendChild(eventItem);
             
             while (eventLog.children.length > 200) {
-                eventLog.removeChild(eventLog.lastChild);
+                const firstChild = eventLog.firstChild;
+                if (firstChild) {
+                    eventLog.removeChild(firstChild);
+                } else {
+                    break;
+                }
             }
         }
 
@@ -739,10 +777,17 @@
             `;
             
             const eventLog = document.getElementById('eventLog');
-            eventLog.insertBefore(eventItem, eventLog.firstChild);
+            if (!eventLog) return;
+            
+            eventLog.appendChild(eventItem);
             
             while (eventLog.children.length > 200) {
-                eventLog.removeChild(eventLog.lastChild);
+                const firstChild = eventLog.firstChild;
+                if (firstChild) {
+                    eventLog.removeChild(firstChild);
+                } else {
+                    break;
+                }
             }
         }
 

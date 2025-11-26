@@ -3,7 +3,7 @@ Voting system with tie-breaking logic.
 """
 
 import asyncio
-from typing import List, Dict, Optional, TYPE_CHECKING
+from typing import List, Dict, Optional, Any, TYPE_CHECKING
 from ..core import GameState, Judge
 from ..agents import BaseAgent, SimpleLLMAgent
 
@@ -40,9 +40,22 @@ class VotingHandler:
         self.judge.announce("Who votes...")
         
         # Collect votes from all alive players in parallel
-        async def get_vote_for_player(player_num: int, agent: BaseAgent) -> tuple[int, int]:
+        async def get_vote_for_player(player_num: int, agent: BaseAgent) -> tuple[int, int, Optional[Dict[str, Any]]]:
             """Get vote choice for a single player."""
             context = agent.build_context(self.game_state)
+            
+            # Capture context for LLM agents
+            context_data = None
+            if hasattr(agent, 'build_strategic_prompt'):
+                try:
+                    prompt = agent.build_strategic_prompt(context, "vote")
+                    context_data = {
+                        "prompt": prompt,
+                        "player_role": agent.player.role.role_type.value,
+                        "player_team": agent.player.role.team.value
+                    }
+                except:
+                    pass
             
             # Use async version if available (SimpleLLMAgent), otherwise fallback to sync
             if isinstance(agent, SimpleLLMAgent):
@@ -50,7 +63,7 @@ class VotingHandler:
             else:
                 vote_choice = agent.get_vote_choice(context)
             
-            return player_num, vote_choice
+            return player_num, vote_choice, context_data
         
         # Create tasks for all players
         tasks = []
@@ -64,7 +77,7 @@ class VotingHandler:
             results = await asyncio.gather(*tasks)
                 
             # Process all votes
-            for player_num, vote_choice in results:
+            for player_num, vote_choice, context_data in results:
                 # Safety check: prevent self-voting
                 if vote_choice == player_num:
                     # Reject self-vote, fallback to first other nomination
@@ -79,7 +92,7 @@ class VotingHandler:
                     self.judge.process_vote(player_num, vote_choice)
                     # Emit vote event
                     if self.event_emitter:
-                        self.event_emitter.emit_vote(player_num, vote_choice, self.game_state.day_number)
+                        self.event_emitter.emit_vote(player_num, vote_choice, self.game_state.day_number, context_data)
     
     def collect_votes(self, agents: dict[int, BaseAgent]) -> None:
         """
@@ -213,9 +226,22 @@ class VotingHandler:
         self.judge.announce(f"Same tie persists. Vote: Who is in favour of all nominated players ({tied_players}) leaving the game?")
         
         # Collect votes in parallel
-        async def get_vote_for_player(player_num: int, agent: BaseAgent) -> tuple[int, int]:
+        async def get_vote_for_player(player_num: int, agent: BaseAgent) -> tuple[int, int, Optional[Dict[str, Any]]]:
             """Get vote choice for a single player."""
             context = agent.build_context(self.game_state)
+            
+            # Capture context for LLM agents
+            context_data = None
+            if hasattr(agent, 'build_strategic_prompt'):
+                try:
+                    prompt = agent.build_strategic_prompt(context, "vote")
+                    context_data = {
+                        "prompt": prompt,
+                        "player_role": agent.player.role.role_type.value,
+                        "player_team": agent.player.role.team.value
+                    }
+                except:
+                    pass
             
             # Use async version if available (SimpleLLMAgent), otherwise fallback to sync
             if isinstance(agent, SimpleLLMAgent):
@@ -223,7 +249,7 @@ class VotingHandler:
             else:
                 vote = agent.get_vote_choice(context)
             
-            return player_num, vote
+            return player_num, vote, context_data
         
         # Create tasks for all players
         tasks = []
@@ -239,7 +265,7 @@ class VotingHandler:
         if tasks:
             results = await asyncio.gather(*tasks)
             
-            for player_num, vote in results:
+            for player_num, vote, context_data in results:
                 # If agent votes for any tied player, count as "eliminate all"
                 if vote in tied_players:
                     votes_for_elimination += 1
