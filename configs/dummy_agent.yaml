@@ -1,0 +1,32 @@
+# Mafia Game Configuration - Dummy Agent
+# This configuration uses the DummyAgent which has deterministic behavior:
+# - All players nominate a random alive player, then vote for that player
+# - Sheriff checks random alive players
+# - Mafia kills random civilians
+# - Don checks random civilians
+
+# Agent settings
+agent_type: dummy_agent
+
+# Game settings
+total_players: 10
+max_rounds: 10
+log_level: INFO
+
+# Speech limits
+max_speech_tokens: 400  # Max tokens for speeches
+tie_break_speech_tokens: 200  # Max tokens for tie-break speeches
+
+# Time limits (for LLM response time)
+night_action_timeout: 10  # seconds
+voting_window: 1.5  # seconds
+
+# LLM settings (not used by dummy agent, but kept for consistency)
+llm_model: gpt-4
+llm_temperature: 0.7
+max_retries: 3
+max_action_tokens: 400  # Max tokens for night actions and voting (not speeches)
+
+# Judge announcements
+use_judge_announcements: true
+

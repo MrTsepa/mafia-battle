@@ -1,0 +1,22 @@
+# Mafia Game Simulation Requirements
+
+# Core dependencies
+python-dotenv>=1.0.0
+
+# LLM integration (choose one or both)
+openai>=1.0.0
+anthropic>=0.18.0
+
+# Utilities
+pydantic>=2.0.0
+typing-extensions>=4.8.0
+pyyaml>=6.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-mock>=3.12.0
+
+# Web interface
+flask>=3.0.0
+flask-socketio>=5.3.0
+

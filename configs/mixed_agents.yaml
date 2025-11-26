@@ -1,0 +1,33 @@
+# Mafia Game Configuration - Mixed Agents (2 LLM + 8 Dummy)
+# This configuration uses 2 LLM agents and 8 dummy agents for faster gameplay
+# LLM agents will be on players 1 and 2, rest are dummy agents
+
+# Agent settings
+agent_type: dummy_agent  # Default for players not in agent_types
+agent_types:
+  1: simple_llm_agent  # Player 1 uses LLM
+  2: simple_llm_agent  # Player 2 uses LLM
+  # Players 3-10 will use dummy_agent (default)
+
+# Game settings
+total_players: 10
+max_rounds: 10
+log_level: INFO
+
+# Speech limits
+max_speech_tokens: 16000  # Max tokens for speeches (gpt-5 models need extra for reasoning)
+tie_break_speech_tokens: 1000  # Max tokens for tie-break speeches
+
+# Time limits (for LLM response time)
+night_action_timeout: 10  # seconds
+voting_window: 1.5  # seconds
+
+# LLM settings (only used by LLM agents)
+llm_model: gpt-4o-mini  # Lightweight model for faster responses
+llm_temperature: 0.7
+max_retries: 3
+max_action_tokens: 16000  # Max tokens for night actions and voting (gpt-5 models need extra for reasoning)
+
+# Judge announcements
+use_judge_announcements: true
+
