@@ -318,6 +318,192 @@ class SimpleLLMAgent(BaseAgent):
         
         return list(suspicious)
     
+    def _format_chronological_events(self, context: AgentContext, include_current_day: bool = True) -> List[str]:
+        """
+        Format all game events (speeches, nominations, votes, eliminations, night kills) 
+        in chronological order with timestamps.
+        
+        Format: [Day X][Player Y][Timestamp] event text...
+        
+        Returns a list of formatted event strings.
+        """
+        events = []
+        current_day = context.game_state.day_number
+        
+        # Collect all speeches with timestamps
+        for event in context.public_history:
+            if event.get("type") == "speech":
+                day = event.get("day", current_day)
+                if not include_current_day and day == current_day:
+                    continue
+                player = event.get("player", "?")
+                timestamp = event.get("timestamp", f"Day {day}, Speech #?")
+                speech = event.get("speech", "")
+                # Extract speech number from timestamp for better sorting
+                speech_num = 0
+                if "Speech #" in timestamp:
+                    try:
+                        speech_num = int(timestamp.split("Speech #")[1])
+                    except:
+                        pass
+                events.append({
+                    "type": "speech",
+                    "day": day,
+                    "night": None,
+                    "timestamp": timestamp,
+                    "player": player,
+                    "text": speech,
+                    "sort_key": (day, 0, speech_num, player)  # Speeches come first, sorted by speech number
+                })
+        
+        # Collect nominations with timestamps (they happen after speeches on same day)
+        for day, nominations in context.game_state.nominations.items():
+            if not include_current_day and day == current_day:
+                continue
+            for idx, nom in enumerate(nominations):
+                events.append({
+                    "type": "nomination",
+                    "day": day,
+                    "night": None,
+                    "timestamp": f"Day {day}",
+                    "player": nom,
+                    "text": f"Player {nom} was nominated",
+                    "sort_key": (day, 1, idx, nom)  # Nominations after speeches
+                })
+        
+        # Collect votes with timestamps (they happen after nominations on same day)
+        for day, votes in context.game_state.votes.items():
+            if not include_current_day and day == current_day:
+                continue
+            vote_targets = {}
+            for voter, target in votes.items():
+                if target not in vote_targets:
+                    vote_targets[target] = []
+                vote_targets[target].append(voter)
+            for idx, (target, voters) in enumerate(vote_targets.items()):
+                voters_str = ", ".join([f"P{v}" for v in voters])
+                events.append({
+                    "type": "vote",
+                    "day": day,
+                    "night": None,
+                    "timestamp": f"Day {day}",
+                    "player": None,  # Votes don't have a single player
+                    "voters": voters,
+                    "target": target,
+                    "text": f"→ Player {target}",  # Voters shown in brackets, not in text
+                    "sort_key": (day, 2, idx, target)  # Votes after nominations
+                })
+        
+        # Track which players were eliminated via night kills to avoid duplicates
+        night_killed_players = set()
+        for night, killed_player in sorted(context.game_state.night_kills.items()):
+            if killed_player:
+                night_killed_players.add(killed_player)
+        
+        # Collect eliminations with timestamps (skip night kills - they're handled separately)
+        for event_data in context.public_history:
+            if event_data.get("type") == "elimination":
+                player = event_data.get("player", "?")
+                reason = event_data.get("reason", "unknown")
+                day = event_data.get("day")
+                night = event_data.get("night")
+                voters = event_data.get("voters", [])
+                
+                # Skip if this is a night kill (we'll add it separately from night_kills dict)
+                if reason == "night kill" or player in night_killed_players:
+                    continue
+                
+                if day:
+                    timestamp = f"Day {day}"
+                    sort_day = day
+                    sort_order = 3  # Eliminations after votes
+                else:
+                    timestamp = "Unknown"
+                    sort_day = 0
+                    sort_order = 3
+                events.append({
+                    "type": "elimination",
+                    "day": day,
+                    "night": None,
+                    "timestamp": timestamp,
+                    "player": player,
+                    "reason": reason,
+                    "voters": voters,
+                    "text": f"Player {player} eliminated ({reason})",
+                    "sort_key": (sort_day, sort_order, 0, player)
+                })
+        
+        # Collect night kills with timestamps (only from night_kills dict, not from eliminations)
+        for night, killed_player in sorted(context.game_state.night_kills.items()):
+            if killed_player:
+                events.append({
+                    "type": "night_kill",
+                    "day": None,
+                    "night": night,
+                    "timestamp": f"Night {night}",
+                    "player": killed_player,
+                    "text": f"Player {killed_player} was killed",
+                    "sort_key": (night + 1000, 0, 0, killed_player)  # Night events after day events
+                })
+        
+        # Sort all events chronologically
+        events.sort(key=lambda x: x["sort_key"])
+        
+        # Format events in the new simplified format
+        formatted = []
+        for event in events:
+            if event["type"] == "speech":
+                # Format: [Day X, Speech #Y] speech text...
+                timestamp = event.get("timestamp", f"Day {event['day']}, Speech #?")
+                formatted_line = f"[{timestamp}] {event['text']}"
+                formatted.append(formatted_line)
+            
+            elif event["type"] == "nomination":
+                # Format: [Day X] Player Y was nominated
+                day = event.get("day", "?")
+                formatted_line = f"[Day {day}] Player {event['player']} was nominated"
+                formatted.append(formatted_line)
+            
+            elif event["type"] == "vote":
+                # Format: [Day X] P1, P2 → Player Y
+                day = event.get("day", "?")
+                voters_str = ", ".join([f"P{v}" for v in event.get("voters", [])])
+                target = event.get("target", "?")
+                formatted_line = f"[Day {day}] {voters_str} → Player {target}"
+                formatted.append(formatted_line)
+            
+            elif event["type"] == "elimination":
+                # Format: [Day X] → Player Y was eliminated by [P1, P2, ...]
+                day = event.get("day")
+                night = event.get("night")
+                player = event.get("player", "?")
+                voters = event.get("voters", [])
+                reason = event.get("reason", "unknown")
+                
+                if day:
+                    prefix = f"[Day {day}]"
+                elif night:
+                    prefix = f"[Night {night}]"
+                else:
+                    prefix = "[Unknown]"
+                
+                if voters:
+                    voters_str = ", ".join([f"P{v}" for v in voters])
+                    formatted_line = f"{prefix} → Player {player} was eliminated by [{voters_str}]"
+                else:
+                    # For eliminations without voters, show reason
+                    formatted_line = f"{prefix} → Player {player} was eliminated ({reason})"
+                formatted.append(formatted_line)
+            
+            elif event["type"] == "night_kill":
+                # Format: [Night X] Player Y was killed
+                night = event.get("night", "?")
+                player = event.get("player", "?")
+                formatted_line = f"[Night {night}] Player {player} was killed"
+                formatted.append(formatted_line)
+        
+        return formatted
+    
     def build_strategic_prompt(self, context: AgentContext, action_type: str) -> str:
         """
         Build a strategic prompt based on game analysis learnings.
@@ -483,38 +669,23 @@ class SimpleLLMAgent(BaseAgent):
                     prompt_parts.append(f"  Players {p1} and {p2} voted together multiple times")
                 prompt_parts.append("")
         
-        # Add recent history (limit to keep prompt shorter for gpt-5-mini)
-        # For night actions, use even less history to save tokens
+        # Add game history - comprehensive context for all actions in chronological order
         if action_type in ["kill_claim", "kill_decision", "sheriff_check", "don_check"]:
-            # Night actions need minimal history - just eliminations
-            prompt_parts.append("RECENT ELIMINATIONS:")
-            recent_history = context.public_history[-5:]  # Last 5 events only
-            eliminations = [e for e in recent_history if e.get("type") == "elimination"]
-            for event in eliminations[:3]:  # Max 3 eliminations
-                reason = event.get('reason', 'unknown')
-                prompt_parts.append(f"  Player {event['player']} eliminated ({reason})")
-            if not eliminations:
-                prompt_parts.append("  None yet")
-            prompt_parts.append("")
+            # Night actions: include all events in chronological order
+            chronological_events = self._format_chronological_events(context, include_current_day=True)
+            if chronological_events:
+                prompt_parts.append("GAME HISTORY (chronological order):")
+                for event_line in chronological_events:
+                    prompt_parts.append(f"  {event_line}")
+                prompt_parts.append("")
         else:
-            # Day actions can have more history
-            prompt_parts.append("RECENT GAME HISTORY:")
-            recent_history = context.public_history[-8:]  # Last 8 events
-            for event in recent_history:
-                if event["type"] == "speech":
-                    # Show full speech with timestamp
-                    day = event.get('day', context.game_state.day_number)
-                    timestamp = event.get('timestamp', f'Day {day}')
-                    prompt_parts.append(f"  {timestamp}: Player {event['player']} said: {event['speech']}")
-                elif event["type"] == "nomination":
-                    prompt_parts.append(f"  Day {event['day']}: Player {event['target']} was nominated")
-                elif event["type"] == "elimination":
-                    reason = event.get('reason', 'unknown')
-                    prompt_parts.append(f"  Player {event['player']} was eliminated ({reason})")
-                elif event["type"] == "votes":
-                    votes_summary = f"{len(event['votes'])} votes cast"
-                    prompt_parts.append(f"  Day {event['day']}: {votes_summary}")
-            prompt_parts.append("")
+            # Day actions: include all events in chronological order
+            chronological_events = self._format_chronological_events(context, include_current_day=True)
+            if chronological_events:
+                prompt_parts.append("GAME HISTORY (chronological order):")
+                for event_line in chronological_events:
+                    prompt_parts.append(f"  {event_line}")
+                prompt_parts.append("")
         
         # Add phase-specific instructions
         if action_type == "final_speech":

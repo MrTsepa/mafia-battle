@@ -145,8 +145,16 @@ class BaseAgent(ABC):
                 })
         
         # Match speeches to days
-        # Strategy: If a player nominated on day X, their speech on that day happened before the nomination
+        # Strategy: Each player speaks once per day during day phases
+        # Use nominations as anchors, then distribute remaining speeches evenly
+        
+        # Track speeches per player per day
+        player_speech_counts = {}  # {player_num: {day: count}}
+        for player in game_state.players:
+            player_speech_counts[player.player_number] = {}
+        
         # First pass: match speeches to days based on nominations
+        # If a player nominated on day X, their first speech is likely from that day
         for speech_data in all_speeches:
             player_num = speech_data["player"]
             day_for_speech = None
@@ -154,34 +162,47 @@ class BaseAgent(ABC):
             # Check if this player nominated on any day
             for day in sorted(game_state.nominations.keys()):
                 if player_num in game_state.nominations[day]:
-                    # This player nominated on this day
-                    # Count how many speeches this player has made so far
-                    player_speech_index = sum(1 for s in all_speeches[:all_speeches.index(speech_data)+1] if s["player"] == player_num)
+                    # Count how many speeches this player has made so far (before this one)
+                    player_speech_index = sum(1 for s in all_speeches[:all_speeches.index(speech_data)] if s["player"] == player_num)
                     # If this is their first speech, it's likely from the day they nominated
-                    if player_speech_index == 1:
+                    if player_speech_index == 0:
                         day_for_speech = day
                         break
             
             speech_data["day"] = day_for_speech
+            if day_for_speech:
+                if day_for_speech not in player_speech_counts[player_num]:
+                    player_speech_counts[player_num][day_for_speech] = 0
+                player_speech_counts[player_num][day_for_speech] += 1
         
         # Second pass: assign remaining speeches to days in order
+        # Distribute speeches evenly across days, ensuring each player has at most one speech per day
         speeches_per_day = {}
-        if game_state.nominations:
-            for d in sorted(game_state.nominations.keys()):
-                speeches_per_day[d] = 0
+        all_days = sorted(set(game_state.nominations.keys()) | {game_state.day_number})
+        for d in all_days:
+            speeches_per_day[d] = 0
         
         for speech_data in all_speeches:
             if speech_data.get("day") is None:
-                # Not yet assigned, assign to days in order
-                if game_state.nominations:
-                    days = sorted(game_state.nominations.keys())
-                    # Assign to the day with fewest speeches so far
-                    day_for_speech = min(days, key=lambda d: speeches_per_day.get(d, 0))
-                    speech_data["day"] = day_for_speech
-                    speeches_per_day[day_for_speech] = speeches_per_day.get(day_for_speech, 0) + 1
-                else:
-                    # No nominations yet, use current day
-                    speech_data["day"] = game_state.day_number
+                player_num = speech_data["player"]
+                # Find a day where this player hasn't spoken yet
+                day_for_speech = None
+                
+                # Try to assign to existing days first
+                for day in all_days:
+                    if day not in player_speech_counts[player_num]:
+                        day_for_speech = day
+                        break
+                
+                # If player has spoken on all days, assign to day with fewest total speeches
+                if day_for_speech is None:
+                    day_for_speech = min(all_days, key=lambda d: speeches_per_day.get(d, 0))
+                
+                speech_data["day"] = day_for_speech
+                if day_for_speech not in player_speech_counts[player_num]:
+                    player_speech_counts[player_num][day_for_speech] = 0
+                player_speech_counts[player_num][day_for_speech] += 1
+                speeches_per_day[day_for_speech] = speeches_per_day.get(day_for_speech, 0) + 1
             else:
                 # Already assigned, count it
                 day = speech_data["day"]
@@ -216,13 +237,16 @@ class BaseAgent(ABC):
                 "votes": votes.copy()
             })
         
-        # Add eliminations
+        # Add eliminations (with day information and voters)
         for action in game_state.action_log:
             if action["type"] == "player_eliminated":
                 history.append({
                     "type": "elimination",
                     "player": action["data"]["player"],
-                    "reason": action["data"]["reason"]
+                    "reason": action["data"]["reason"],
+                    "day": action["data"].get("day_number"),  # Include day number if available
+                    "night": action["data"].get("night_number"),  # Include night number if available
+                    "voters": action["data"].get("voters", [])  # Include voters if available
                 })
         
         return history
