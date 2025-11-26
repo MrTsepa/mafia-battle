@@ -9,7 +9,7 @@ GAME RULES:
 
 CURRENT PHASE: day
 DAY: 2, NIGHT: 1
-ALIVE: 8 players (3 mafia, 5 civilians)
+ALIVE: 8 players (2 mafia, 6 civilians)
 
 GAME STRUCTURE - DAY 2:
 - This is the day after the first night kill
@@ -21,8 +21,8 @@ GAME STRUCTURE - DAY 2:
 ALIVE PLAYERS:
   Player 1
   Player 2
-  Player 4
   Player 5
+  Player 6
   Player 7
   Player 8
   Player 9
@@ -46,9 +46,9 @@ GAME HISTORY (chronological order):
   [Day 1] → Player 3 was eliminated by [P1, P2, P4, P6]
   [Day 2, Speech #1] Day 2 speech from Player 1: Based on yesterday's events, I think we need to investigate further. PASS
   [Day 2, Speech #2] Day 2 speech from Player 2: Based on yesterday's events, I think we need to investigate further. PASS
-  [Day 2, Speech #3] Day 2 speech from Player 4: Based on yesterday's events, I think we need to investigate further. PASS
-  [Day 2] Player 7 was nominated
-  [Night 1] Player 6 was killed
+  [Day 2, Speech #3] Day 2 speech from Player 5: Based on yesterday's events, I think we need to investigate further. PASS
+  [Day 2] Player 5 was nominated
+  [Night 1] Player 4 was killed
 
 YOUR TURN TO SPEAK:
 - You have up to 200 words
@@ -57,6 +57,6 @@ YOUR TURN TO SPEAK:
 - Analyze voting patterns and suspicious behavior
 - If you're sheriff, be careful not to reveal your role
 - Coordinate with your team if possible
-- Current nominations: [7]
+- Current nominations: [5]
 
 Generate your strategic speech:

@@ -33,8 +33,8 @@ def test_llm_context_examples():
     """
     config = GameConfig()
     
-    # Create game state and set up some history
-    game_state = GameState()
+    # Create game state with fixed seed for reproducibility
+    game_state = GameState(random_seed=42)
     game_state.setup_game()
     
     # Set up Day 1 history

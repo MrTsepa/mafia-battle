@@ -15,7 +15,7 @@ STRATEGY:
 
 CURRENT PHASE: day
 DAY: 2, NIGHT: 1
-ALIVE: 7 players (2 mafia, 5 civilians)
+ALIVE: 7 players (1 mafia, 6 civilians)
 
 GAME STRUCTURE - DAY 2:
 - This is the day after the first night kill
@@ -26,8 +26,8 @@ GAME STRUCTURE - DAY 2:
 
 ALIVE PLAYERS:
   Player 2
-  Player 4
   Player 5
+  Player 6
   Player 7
   Player 8
   Player 9
@@ -51,10 +51,10 @@ GAME HISTORY (chronological order):
   [Day 1] → Player 3 was eliminated by [P1, P2, P4, P6]
   [Day 2, Speech #1] Day 2 speech from Player 1: Based on yesterday's events, I think we need to investigate further. PASS
   [Day 2, Speech #2] Day 2 speech from Player 2: Based on yesterday's events, I think we need to investigate further. PASS
-  [Day 2, Speech #3] Day 2 speech from Player 4: Based on yesterday's events, I think we need to investigate further. PASS
-  [Day 2] Player 7 was nominated
+  [Day 2, Speech #3] Day 2 speech from Player 5: Based on yesterday's events, I think we need to investigate further. PASS
+  [Day 2] Player 5 was nominated
   [Day 2] → Player 1 was eliminated (voting)
-  [Night 1] Player 6 was killed
+  [Night 1] Player 4 was killed
 
 FINAL SPEECH:
 - You have been eliminated from the game
