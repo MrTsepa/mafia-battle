@@ -5,10 +5,8 @@ Implements strategic decision-making based on game analysis learnings.
 
 import os
 import re
-import asyncio
 import time
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
-from collections import defaultdict
 
 try:
     from openai import AsyncOpenAI
@@ -24,6 +22,11 @@ from ..config.game_config import GameConfig, default_config
 
 if TYPE_CHECKING:
     from ..web.event_emitter import EventEmitter
+
+# Constants
+SYSTEM_MESSAGE = "You are a strategic player in a Mafia game. Make decisions based on the information provided."
+SPEECH_ENDINGS = ("PASS", "THANK YOU")
+NIGHT_EVENT_OFFSET = 1000  # Used to sort night events after day events
 
 
 class SimpleLLMAgent(BaseAgent):
@@ -65,9 +68,88 @@ class SimpleLLMAgent(BaseAgent):
         
         # Track strategic information
         self.checked_players: set[int] = set()  # For sheriff/don
-        self.suspicious_players: set[int] = set()  # Players to investigate
-        self.trusted_players: set[int] = set()  # Players we trust
-        self.speech_analysis: Dict[int, List[str]] = defaultdict(list)  # {player: [speeches]}
+    
+    def _build_api_params(self, prompt: str, max_tokens: int, temperature: Optional[float]) -> Dict[str, Any]:
+        """
+        Build API parameters for OpenAI API calls.
+        
+        Args:
+            prompt: The prompt to send
+            max_tokens: Maximum tokens in response
+            temperature: Temperature for generation
+            
+        Returns:
+            Dictionary of API parameters
+        """
+        api_params: Dict[str, Any] = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_MESSAGE},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": temperature or self.temperature
+        }
+        
+        # Use max_completion_tokens for newer models, max_tokens for older ones
+        if "gpt-5" in self.model:
+            api_params["max_completion_tokens"] = max_tokens
+            # gpt-5-mini only supports default temperature (1), don't set custom temperature
+            if "temperature" in api_params:
+                del api_params["temperature"]
+        elif "gpt-4o" in self.model:
+            api_params["max_completion_tokens"] = max_tokens
+        else:
+            api_params["max_tokens"] = max_tokens
+        
+        return api_params
+    
+    def _process_llm_response(self, response: Any, max_tokens: int, latency_ms: float) -> str:
+        """
+        Process LLM API response and extract content.
+        
+        Args:
+            response: OpenAI API response object
+            max_tokens: Maximum tokens requested
+            latency_ms: Request latency in milliseconds
+            
+        Returns:
+            Extracted content string
+            
+        Raises:
+            LLMEmptyResponseError: If response is empty or invalid
+        """
+        content = response.choices[0].message.content
+        if content is None:
+            content = ""
+        content = content.strip()
+        
+        # Emit metadata
+        if self.event_emitter and response.usage:
+            self.event_emitter.emit_llm_metadata(
+                self.player.player_number,
+                "llm_api_call",
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+                response.usage.total_tokens,
+                latency_ms,
+                self.model
+            )
+        
+        # Empty response is a fatal error
+        if not content:
+            error_details = f"Model: {self.model}, Max tokens: {max_tokens}"
+            if hasattr(response.choices[0], 'finish_reason'):
+                error_details += f", Finish reason: {response.choices[0].finish_reason}"
+            if response.usage:
+                error_details += f", Usage: {response.usage}"
+            
+            raise LLMEmptyResponseError(
+                self.player.player_number,
+                "llm_api_call",
+                f"LLM API returned empty response for Player {self.player.player_number}. {error_details}"
+            )
+        
+        return content
     
     async def _call_llm_async(self, prompt: str, max_tokens: int = 200, temperature: Optional[float] = None) -> str:
         """
@@ -78,58 +160,14 @@ class SimpleLLMAgent(BaseAgent):
             return ""
         
         try:
-            # gpt-5-mini uses max_completion_tokens instead of max_tokens
-            api_params = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": "You are a strategic player in a Mafia game. Make decisions based on the information provided."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": temperature or self.temperature
-            }
-            
-            # Use max_completion_tokens for newer models (gpt-5-mini), max_tokens for older ones
-            if "gpt-5" in self.model:
-                api_params["max_completion_tokens"] = max_tokens
-                # gpt-5-mini only supports default temperature (1), don't set custom temperature
-                if "temperature" in api_params:
-                    del api_params["temperature"]
-            elif "gpt-4o" in self.model:
-                api_params["max_completion_tokens"] = max_tokens
-            else:
-                api_params["max_tokens"] = max_tokens
+            api_params = self._build_api_params(prompt, max_tokens, temperature)
             
             # Track latency
             start_time = time.time()
             response = await self.async_client.chat.completions.create(**api_params)
             latency_ms = (time.time() - start_time) * 1000
             
-            content = response.choices[0].message.content
-            if content is None:
-                content = ""
-            content = content.strip()
-            
-            # Emit metadata
-            if self.event_emitter and response.usage:
-                self.event_emitter.emit_llm_metadata(
-                    self.player.player_number,
-                    "llm_api_call",
-                    response.usage.prompt_tokens,
-                    response.usage.completion_tokens,
-                    response.usage.total_tokens,
-                    latency_ms,
-                    self.model
-                )
-            
-            # Empty response is a fatal error
-            if not content:
-                raise LLMEmptyResponseError(
-                    self.player.player_number,
-                    "llm_api_call",
-                    f"LLM API returned empty response for Player {self.player.player_number}. Model: {self.model}, Max tokens: {max_tokens}"
-                )
-            
-            return content
+            return self._process_llm_response(response, max_tokens, latency_ms)
         except LLMEmptyResponseError:
             # Re-raise LLM empty response errors
             raise
@@ -158,59 +196,14 @@ class SimpleLLMAgent(BaseAgent):
             return ""
         
         try:
-            # gpt-5-mini uses max_completion_tokens instead of max_tokens
-            # Try max_completion_tokens first, fallback to max_tokens for older models
-            api_params = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": "You are a strategic player in a Mafia game. Make decisions based on the information provided."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": temperature or self.temperature
-            }
-            
-            # Use max_completion_tokens for newer models (gpt-5-mini), max_tokens for older ones
-            if "gpt-5" in self.model:
-                api_params["max_completion_tokens"] = max_tokens
-                # gpt-5-mini only supports default temperature (1), don't set custom temperature
-                if "temperature" in api_params:
-                    del api_params["temperature"]
-            elif "gpt-4o" in self.model:
-                api_params["max_completion_tokens"] = max_tokens
-            else:
-                api_params["max_tokens"] = max_tokens
+            api_params = self._build_api_params(prompt, max_tokens, temperature)
             
             # Track latency
             start_time = time.time()
             response = self.client.chat.completions.create(**api_params)
             latency_ms = (time.time() - start_time) * 1000
             
-            content = response.choices[0].message.content
-            if content is None:
-                content = ""
-            content = content.strip()
-            
-            # Emit metadata
-            if self.event_emitter and response.usage:
-                self.event_emitter.emit_llm_metadata(
-                    self.player.player_number,
-                    "llm_api_call",
-                    response.usage.prompt_tokens,
-                    response.usage.completion_tokens,
-                    response.usage.total_tokens,
-                    latency_ms,
-                    self.model
-                )
-            
-            # Empty response is a fatal error
-            if not content:
-                raise LLMEmptyResponseError(
-                    self.player.player_number,
-                    "llm_api_call",
-                    f"LLM API returned empty response for Player {self.player.player_number}. Model: {self.model}, Max tokens: {max_tokens}, Finish reason: {response.choices[0].finish_reason}, Usage: {response.usage}"
-                )
-            
-            return content
+            return self._process_llm_response(response, max_tokens, latency_ms)
         except LLMEmptyResponseError:
             # Re-raise LLM empty response errors
             raise
@@ -244,42 +237,116 @@ class SimpleLLMAgent(BaseAgent):
         
         return None
     
-    def _identify_suspicious_players(self, context: AgentContext) -> List[int]:
+    def _get_nominated_players(self, context: AgentContext) -> set[int]:
         """
-        Identify suspicious players based on game history.
-        Only marks players as suspicious when there is actual evidence.
+        Get all players who have been nominated across all days.
         
         Args:
             context: Current game context
             
         Returns:
-            List of suspicious player numbers
+            Set of player numbers who have been nominated
         """
-        suspicious = set()
+        nominated = set()
+        for day_noms in context.game_state.nominations.values():
+            nominated.update(day_noms)
+        return nominated
+    
+    def _get_active_civilians(self, context: AgentContext) -> List[Player]:
+        """
+        Get civilian players who have been nominated (active players).
         
-        # Only mark players as suspicious if we have actual evidence
-        # Skip on day 1 when no information has been gathered yet
-        if context.game_state.day_number <= 1 and not context.game_state.votes:
-            return []  # No suspicious players on day 1
+        Args:
+            context: Current game context
+            
+        Returns:
+            List of active civilian players
+        """
+        civilians = context.game_state.get_civilian_players()
+        nominated = self._get_nominated_players(context)
+        return [p for p in civilians if p.player_number in nominated]
+    
+    def _get_kill_decision_fallback(self, context: AgentContext, kill_claims: Dict[int, int]) -> Optional[int]:
+        """
+        Get fallback target for kill decision when LLM doesn't provide one.
         
-        # Players who voted for eliminated civilians (possible mafia)
-        for action in context.game_state.action_log:
-            if action.get("type") == "player_eliminated":
-                eliminated = action.get("data", {}).get("player")
-                day = action.get("data", {}).get("day_number")
-                if day and eliminated:
-                    # Check who voted for this eliminated player
-                    votes = context.game_state.votes.get(day, {})
-                    for voter, target in votes.items():
-                        if target == eliminated:
-                            eliminated_player = context.game_state.get_player(eliminated)
-                            if eliminated_player and eliminated_player.is_civilian:
-                                suspicious.add(voter)
+        Args:
+            context: Current game context
+            kill_claims: Dictionary of kill claims from mafia team
+            
+        Returns:
+            Player number to kill, or None if no valid target
+        """
+        if kill_claims:
+            # Use first claim
+            return list(kill_claims.values())[0]
         
-        # Don't mark players as suspicious just for not being nominated
-        # Only use actual voting evidence
+        # Fallback: kill random civilian
+        civilians = context.game_state.get_civilian_players()
+        if civilians:
+            return civilians[0].player_number
         
-        return list(suspicious)
+        return None
+    
+    def _get_kill_claim_fallback(self, context: AgentContext) -> Optional[int]:
+        """
+        Get fallback target for kill claim when LLM doesn't provide one.
+        Prefers active (nominated) players.
+        
+        Args:
+            context: Current game context
+            
+        Returns:
+            Player number to target, or None if no valid target
+        """
+        civilians = context.game_state.get_civilian_players()
+        if not civilians:
+            return None
+        
+        # Prefer targeting players who have been nominated (active)
+        active_civilians = self._get_active_civilians(context)
+        if active_civilians:
+            return active_civilians[0].player_number
+        
+        return civilians[0].player_number
+    
+    def _format_check_results(self, checks: Dict[int, Any], check_type: str) -> List[str]:
+        """
+        Format check results for prompt.
+        
+        Args:
+            checks: Dictionary mapping night numbers to check results
+            check_type: Type of check ("don" or "sheriff")
+            
+        Returns:
+            List of formatted check result strings
+        """
+        formatted = []
+        for night in sorted(checks.keys()):
+            check_data = checks[night]
+            if isinstance(check_data, dict):
+                # New format: {"target": player_num, "result": "Sheriff"/"Not the Sheriff"/"Red"/"Black"}
+                target = check_data.get("target", "?")
+                result = check_data.get("result", "?")
+                formatted.append(f"  Night {night}: Player {target} is {result}")
+            else:
+                # Old format: just the result string (backward compatibility)
+                formatted.append(f"  Night {night}: {check_data}")
+        return formatted
+    
+    def _normalize_speech_ending(self, speech: str) -> str:
+        """
+        Ensure speech ends with PASS or THANK YOU.
+        
+        Args:
+            speech: Speech text
+            
+        Returns:
+            Speech with proper ending
+        """
+        if not (speech.upper().endswith(SPEECH_ENDINGS[0]) or speech.upper().endswith(SPEECH_ENDINGS[1])):
+            speech += " " + SPEECH_ENDINGS[0]
+        return speech
     
     def _format_chronological_events(self, context: AgentContext, include_current_day: bool = True) -> List[str]:
         """
@@ -540,21 +607,14 @@ class SimpleLLMAgent(BaseAgent):
                     "- Make final decision on who mafia kills each night",
                     "- Your check results:",
                 ])
-                for night in sorted(self.player.don_checks.keys()):
-                    check_data = self.player.don_checks[night]
-                    if isinstance(check_data, dict):
-                        # New format: {"target": player_num, "result": "Sheriff"/"Not the Sheriff"}
-                        target = check_data.get("target", "?")
-                        result = check_data.get("result", "?")
-                        prompt_parts.append(f"  Night {night}: Player {target} is {result}")
-                    else:
-                        # Old format: just "Sheriff"/"Not the Sheriff" (backward compatibility)
-                        prompt_parts.append(f"  Night {night}: {check_data}")
-                prompt_parts.append("")
-                prompt_parts.append("DON STRATEGY:")
-                prompt_parts.append("- Prioritize checking players who seem to be leading or coordinating")
-                prompt_parts.append("- Check players who haven't been checked yet")
-                prompt_parts.append("")
+                prompt_parts.extend(self._format_check_results(self.player.don_checks, "don"))
+                prompt_parts.extend([
+                    "",
+                    "DON STRATEGY:",
+                    "- Prioritize checking players who seem to be leading or coordinating",
+                    "- Check players who haven't been checked yet",
+                    "",
+                ])
         
         if self.player.role.role_type == RoleType.SHERIFF:
             prompt_parts.extend([
@@ -562,22 +622,15 @@ class SimpleLLMAgent(BaseAgent):
                 "- Check one player per night to see if they are Red (civilian) or Black (mafia)",
                 "- Your check results:",
             ])
-            for night in sorted(self.player.sheriff_checks.keys()):
-                check_data = self.player.sheriff_checks[night]
-                if isinstance(check_data, dict):
-                    # New format: {"target": player_num, "result": "Red"/"Black"}
-                    target = check_data.get("target", "?")
-                    result = check_data.get("result", "?")
-                    prompt_parts.append(f"  Night {night}: Player {target} is {result}")
-                else:
-                    # Old format: just "Red"/"Black" (backward compatibility)
-                    prompt_parts.append(f"  Night {night}: {check_data}")
-            prompt_parts.append("")
-            prompt_parts.append("SHERIFF STRATEGY:")
-            prompt_parts.append("- Check suspicious players (those who voted for eliminated civilians)")
-            prompt_parts.append("- Check players who avoid nominations or seem to be hiding")
-            prompt_parts.append("- Don't check randomly - use information from voting patterns")
-            prompt_parts.append("")
+            prompt_parts.extend(self._format_check_results(self.player.sheriff_checks, "sheriff"))
+            prompt_parts.extend([
+                "",
+                "SHERIFF STRATEGY:",
+                "- Check suspicious players (those who voted for eliminated civilians)",
+                "- Check players who avoid nominations or seem to be hiding",
+                "- Don't check randomly - use information from voting patterns",
+                "",
+            ])
         
         # Add game state
         alive_players = context.game_state.get_alive_players()
@@ -636,31 +689,16 @@ class SimpleLLMAgent(BaseAgent):
             "ALIVE PLAYERS:",
         ])
         for player in alive_players:
-            status = ""
-            if player.player_number in self.suspicious_players:
-                status = " [SUSPICIOUS]"
-            elif player.player_number in self.trusted_players:
-                status = " [TRUSTED]"
-            prompt_parts.append(f"  Player {player.player_number}{status}")
+            prompt_parts.append(f"  Player {player.player_number}")
         prompt_parts.append("")
         
         # Add game history - comprehensive context for all actions in chronological order
-        if action_type in ["kill_claim", "kill_decision", "sheriff_check", "don_check"]:
-            # Night actions: include all events in chronological order
-            chronological_events = self._format_chronological_events(context, include_current_day=True)
-            if chronological_events:
-                prompt_parts.append("GAME HISTORY (chronological order):")
-                for event_line in chronological_events:
-                    prompt_parts.append(f"  {event_line}")
-                prompt_parts.append("")
-        else:
-            # Day actions: include all events in chronological order
-            chronological_events = self._format_chronological_events(context, include_current_day=True)
-            if chronological_events:
-                prompt_parts.append("GAME HISTORY (chronological order):")
-                for event_line in chronological_events:
-                    prompt_parts.append(f"  {event_line}")
-                prompt_parts.append("")
+        chronological_events = self._format_chronological_events(context, include_current_day=True)
+        if chronological_events:
+            prompt_parts.append("GAME HISTORY (chronological order):")
+            for event_line in chronological_events:
+                prompt_parts.append(f"  {event_line}")
+            prompt_parts.append("")
         
         # Add phase-specific instructions
         if action_type == "final_speech":
@@ -778,15 +816,8 @@ class SimpleLLMAgent(BaseAgent):
             The speech text
         """
         prompt = self.build_strategic_prompt(context, "speech")
-        
-        # _call_llm will raise LLMEmptyResponseError if response is empty
         response = self._call_llm(prompt, max_tokens=self.config.max_speech_tokens)
-        
-        # Ensure speech ends with PASS or THANK YOU
-        if not (response.upper().endswith("PASS") or response.upper().endswith("THANK YOU")):
-            response += " PASS"
-        
-        return response
+        return self._normalize_speech_ending(response)
     
     def get_final_speech(self, context: AgentContext) -> str:
         """
@@ -799,15 +830,186 @@ class SimpleLLMAgent(BaseAgent):
             The final speech text
         """
         prompt = self.build_strategic_prompt(context, "final_speech")
-        
-        # _call_llm will raise LLMEmptyResponseError if response is empty
         response = self._call_llm(prompt, max_tokens=self.config.max_speech_tokens)
+        return self._normalize_speech_ending(response)
+    
+    def _handle_sheriff_check(self, context: AgentContext) -> Dict[str, Any]:
+        """
+        Handle sheriff check action.
         
-        # Ensure speech ends with PASS or THANK YOU
-        if not (response.upper().endswith("PASS") or response.upper().endswith("THANK YOU")):
-            response += " PASS"
+        Args:
+            context: Current game context
+            
+        Returns:
+            Dictionary containing action type and target
+        """
+        action = {}
+        prompt = self.build_strategic_prompt(context, "sheriff_check")
+        response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
         
-        return response
+        target = self._extract_player_number(response, context)
+        if target and target != self.player.player_number:
+            action["type"] = "sheriff_check"
+            action["target"] = target
+            self.checked_players.add(target)
+        else:
+            # Fallback: check random available player
+            alive_players = context.game_state.get_alive_players()
+            available = [p.player_number for p in alive_players 
+                        if p.player_number != self.player.player_number 
+                        and p.player_number not in self.checked_players]
+            
+            if available:
+                target = available[0]
+                action["type"] = "sheriff_check"
+                action["target"] = target
+                self.checked_players.add(target)
+        
+        return action
+    
+    def _handle_mafia_kill_claim(self, context: AgentContext) -> Dict[str, Any]:
+        """
+        Handle mafia kill claim action.
+        
+        Args:
+            context: Current game context
+            
+        Returns:
+            Dictionary containing action type and target
+        """
+        action = {}
+        prompt = self.build_strategic_prompt(context, "kill_claim")
+        response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
+        
+        target = self._extract_player_number(response, context)
+        if not target:
+            target = self._get_kill_claim_fallback(context)
+        
+        if target:
+            action["type"] = "kill_claim"
+            action["target"] = target
+        
+        return action
+    
+    def _handle_mafia_kill_decision(self, context: AgentContext, kill_claims: Dict[int, int]) -> Dict[str, Any]:
+        """
+        Handle mafia kill decision action (when Don is eliminated).
+        
+        Args:
+            context: Current game context
+            kill_claims: Dictionary of kill claims from mafia team
+            
+        Returns:
+            Dictionary containing action type and target
+        """
+        action = {}
+        prompt = self.build_strategic_prompt(context, "kill_decision")
+        response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
+        
+        target = self._extract_player_number(response, context)
+        if not target:
+            target = self._get_kill_decision_fallback(context, kill_claims)
+        
+        if target:
+            action["kill_decision"] = target
+            action["type"] = "kill_decision"
+        
+        return action
+    
+    def _handle_don_check(self, context: AgentContext) -> Dict[str, Any]:
+        """
+        Handle Don check action.
+        
+        Args:
+            context: Current game context
+            
+        Returns:
+            Dictionary containing action type and target
+        """
+        action = {}
+        prompt = self.build_strategic_prompt(context, "don_check")
+        response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
+        
+        target = self._extract_player_number(response, context)
+        if not target:
+            # Fallback: check active players
+            civilians = context.game_state.get_civilian_players()
+            available = [p.player_number for p in civilians 
+                        if p.player_number not in self.checked_players]
+            
+            if available:
+                # Prefer checking nominated players (active)
+                nominated = self._get_nominated_players(context)
+                active_available = [p for p in available if p in nominated]
+                if active_available:
+                    target = active_available[0]
+                else:
+                    target = available[0]
+        
+        if target:
+            action["type"] = "don_check"
+            action["target"] = target
+            self.checked_players.add(target)
+        
+        return action
+    
+    def _handle_don_kill_decision(self, context: AgentContext, kill_claims: Dict[int, int]) -> Dict[str, Any]:
+        """
+        Handle Don kill decision action.
+        
+        Args:
+            context: Current game context
+            kill_claims: Dictionary of kill claims from mafia team
+            
+        Returns:
+            Dictionary containing action type and target
+        """
+        action = {}
+        prompt = self.build_strategic_prompt(context, "kill_decision")
+        response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
+        
+        target = self._extract_player_number(response, context)
+        if not target:
+            target = self._get_kill_decision_fallback(context, kill_claims)
+        
+        if target:
+            action["kill_decision"] = target
+            action["type"] = "kill_decision"
+        
+        return action
+    
+    def _is_kill_decision_call(self, context: AgentContext) -> bool:
+        """
+        Determine if this is a kill decision call (Don or mafia when Don is eliminated).
+        
+        Args:
+            context: Current game context
+            
+        Returns:
+            True if this is a kill decision call, False otherwise
+        """
+        # Check explicit marker set by process_mafia_kill
+        if context.private_info.get("_kill_decision_context", False):
+            return True
+        
+        kill_claims = context.private_info.get("mafia_kill_claims", {})
+        if not isinstance(kill_claims, dict) or not kill_claims:
+            return False
+        
+        # If keys are player numbers (not night numbers), it's from process_mafia_kill
+        alive_player_numbers = {p.player_number for p in context.game_state.get_alive_players()}
+        keys = list(kill_claims.keys())
+        all_keys_are_players = all(k in alive_player_numbers for k in keys)
+        
+        if not all_keys_are_players:
+            return False
+        
+        # Check if keys look like night numbers (1, 2, 3, ...)
+        keys_sorted = sorted(keys)
+        looks_like_night_numbers = keys_sorted == list(range(1, len(keys) + 1))
+        
+        # If keys are player numbers but don't look like night numbers, it's a kill decision call
+        return not looks_like_night_numbers
     
     def get_night_action(self, context: AgentContext) -> Dict[str, Any]:
         """
@@ -820,108 +1022,25 @@ class SimpleLLMAgent(BaseAgent):
             Dictionary containing action type and target
         """
         action = {}
-        
-        # Check if this is a kill decision call (Don or mafia when Don is eliminated)
-        # process_mafia_kill sets _kill_decision_context = True to mark it as a kill decision call
+        is_kill_decision_call = self._is_kill_decision_call(context)
         kill_claims = context.private_info.get("mafia_kill_claims", {})
-        is_kill_decision_context = context.private_info.get("_kill_decision_context", False)
-        alive_player_numbers = {p.player_number for p in context.game_state.get_alive_players()}
-        
-        if is_kill_decision_context:
-            # Explicitly marked as kill decision call by process_mafia_kill
-            is_kill_decision_call = True
-        elif isinstance(kill_claims, dict):
-            keys = list(kill_claims.keys())
-            if len(keys) == 0:
-                # Empty dict from get_private_info() means no previous nights - NOT a kill decision call
-                is_kill_decision_call = False
-            else:
-                all_keys_are_players = all(k in alive_player_numbers for k in keys)
-                keys_sorted = sorted(keys)
-                looks_like_night_numbers = keys_sorted == list(range(1, len(keys) + 1))
-                # If keys are player numbers (not night numbers), it's from process_mafia_kill
-                is_kill_decision_call = all_keys_are_players and not looks_like_night_numbers
-        else:
-            is_kill_decision_call = False
         
         # Sheriff: Strategic check
-        if self.player.role.role_type == RoleType.SHERIFF:
-            if not is_kill_decision_call:
-                prompt = self.build_strategic_prompt(context, "sheriff_check")
-                response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
-                
-                target = self._extract_player_number(response, context)
-                if target and target != self.player.player_number:
-                    action["type"] = "sheriff_check"
-                    action["target"] = target
-                    self.checked_players.add(target)
-                else:
-                    # Fallback: check suspicious player or random
-                    suspicious = self._identify_suspicious_players(context)
-                    alive_players = context.game_state.get_alive_players()
-                    available = [p.player_number for p in alive_players 
-                                if p.player_number != self.player.player_number 
-                                and p.player_number not in self.checked_players]
-                    
-                    if suspicious and any(s in available for s in suspicious):
-                        target = next(s for s in suspicious if s in available)
-                    elif available:
-                        target = available[0]  # Simple fallback
-                    else:
-                        return action
-                    
-                    action["type"] = "sheriff_check"
-                    action["target"] = target
-                    self.checked_players.add(target)
+        if self.player.role.role_type == RoleType.SHERIFF and not is_kill_decision_call:
+            action.update(self._handle_sheriff_check(context))
         
         # Mafia: Kill claim or decision (but NOT Don - Don is handled separately below)
         if self.player.is_mafia and self.player.role.role_type != RoleType.DON:
-            # Check if Don is eliminated and we need to make decision
             if is_kill_decision_call:
+                # Check if Don is eliminated and we need to make decision
                 don = next((p for p in context.game_state.get_mafia_players() 
                            if p.role.role_type == RoleType.DON and p.is_alive), None)
                 
                 if not don and "decide_kill" in context.available_actions:
-                    prompt = self.build_strategic_prompt(context, "kill_decision")
-                    response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
-                    
-                    target = self._extract_player_number(response, context)
-                    if not target and kill_claims:
-                        # Fallback: use first claim
-                        target = list(kill_claims.values())[0]
-                    elif not target:
-                        # Fallback: kill random civilian
-                        civilians = context.game_state.get_civilian_players()
-                        if civilians:
-                            target = civilians[0].player_number
-                    
-                    if target:
-                        action["kill_decision"] = target
-                        action["type"] = "kill_decision"
-            elif not is_kill_decision_call:
+                    action.update(self._handle_mafia_kill_decision(context, kill_claims))
+            else:
                 # Normal kill claim
-                prompt = self.build_strategic_prompt(context, "kill_claim")
-                response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
-                
-                target = self._extract_player_number(response, context)
-                if not target:
-                    # Fallback: target active players or random
-                    civilians = context.game_state.get_civilian_players()
-                    if civilians:
-                        # Prefer targeting players who have been nominated (active)
-                        nominated = set()
-                        for day_noms in context.game_state.nominations.values():
-                            nominated.update(day_noms)
-                        
-                        active_civilians = [p for p in civilians if p.player_number in nominated]
-                        if active_civilians:
-                            target = active_civilians[0].player_number
-                        else:
-                            target = civilians[0].player_number
-                
-                if target:
-                    action["type"] = "kill_claim"
-                    action["target"] = target
+                action.update(self._handle_mafia_kill_claim(context))
         
         # Don: Check and kill decision (handled separately to prioritize don_check over kill_claim)
         if self.player.role.role_type == RoleType.DON:
@@ -929,81 +1048,56 @@ class SimpleLLMAgent(BaseAgent):
             if (not is_kill_decision_call and 
                 "don_check" in context.available_actions and
                 context.game_state.night_number not in self.player.don_checks):
-                
-                prompt = self.build_strategic_prompt(context, "don_check")
-                response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
-                
-                target = self._extract_player_number(response, context)
-                if not target:
-                    # Fallback: check active players
-                    civilians = context.game_state.get_civilian_players()
-                    available = [p.player_number for p in civilians 
-                                if p.player_number not in self.checked_players]
-                    
-                    if available:
-                        # Prefer checking nominated players (active)
-                        nominated = set()
-                        for day_noms in context.game_state.nominations.values():
-                            nominated.update(day_noms)
-                        
-                        active_available = [p for p in available if p in nominated]
-                        if active_available:
-                            target = active_available[0]
-                        else:
-                            target = available[0]
-                
-                if target:
-                    action["type"] = "don_check"
-                    action["target"] = target
-                    self.checked_players.add(target)
+                action.update(self._handle_don_check(context))
             
             # Priority 2: Kill decision (when called with kill claims in context)
             if is_kill_decision_call and "decide_kill" in context.available_actions:
-                prompt = self.build_strategic_prompt(context, "kill_decision")
-                response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
-                
-                target = self._extract_player_number(response, context)
-                if not target and kill_claims:
-                    # Fallback: use first claim
-                    target = list(kill_claims.values())[0]
-                elif not target:
-                    # Fallback: kill random civilian
-                    civilians = context.game_state.get_civilian_players()
-                    if civilians:
-                        target = civilians[0].player_number
-                
-                if target:
-                    action["kill_decision"] = target
-                    action["type"] = "kill_decision"
+                action.update(self._handle_don_kill_decision(context, kill_claims))
             
             # Priority 3: Kill claim (only if we haven't already set don_check or kill_decision)
             # Don also makes a kill claim like other mafia during the kill claim phase
             if (not is_kill_decision_call and 
                 action.get("type") not in ["don_check", "kill_decision"]):
-                prompt = self.build_strategic_prompt(context, "kill_claim")
-                response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
-                
-                target = self._extract_player_number(response, context)
-                if not target:
-                    # Fallback: target active players or random
-                    civilians = context.game_state.get_civilian_players()
-                    if civilians:
-                        # Prefer targeting players who have been nominated (active)
-                        nominated = set()
-                        for day_noms in context.game_state.nominations.values():
-                            nominated.update(day_noms)
-                        
-                        active_civilians = [p for p in civilians if p.player_number in nominated]
-                        if active_civilians:
-                            target = active_civilians[0].player_number
-                        else:
-                            target = civilians[0].player_number
-                
-                if target:
-                    action["type"] = "kill_claim"
-                    action["target"] = target
+                action.update(self._handle_mafia_kill_claim(context))
         
         return action
+    
+    def _process_vote_choice(self, response: str, context: AgentContext) -> int:
+        """
+        Process vote choice response and return valid target.
+        
+        Args:
+            response: LLM response text
+            context: Current game context
+            
+        Returns:
+            Player number to vote against
+        """
+        nominations = context.game_state.nominations.get(context.game_state.day_number, [])
+        if not nominations:
+            # Fallback
+            alive_players = context.game_state.get_alive_players()
+            if alive_players:
+                return alive_players[0].player_number
+            return 1
+        
+        target = self._extract_player_number(response, context)
+        
+        # Prevent self-voting: if target is self, reject it
+        if target == self.player.player_number:
+            target = None
+        
+        # Verify target is in nominations
+        if target and target in nominations:
+            return target
+        
+        # Fallback to first nomination that isn't self
+        valid_nominations = [n for n in nominations if n != self.player.player_number]
+        if valid_nominations:
+            return valid_nominations[0]
+        
+        # Last resort: if only self is nominated, this shouldn't happen but handle gracefully
+        return nominations[0] if nominations else 1
     
     async def get_vote_choice_async(self, context: AgentContext) -> int:
         """
@@ -1015,41 +1109,9 @@ class SimpleLLMAgent(BaseAgent):
         Returns:
             Player number to vote against
         """
-        nominations = context.game_state.nominations.get(context.game_state.day_number, [])
-        if not nominations:
-            # Fallback
-            alive_players = context.game_state.get_alive_players()
-            if alive_players:
-                return alive_players[0].player_number
-            return 1
-        
         prompt = self.build_strategic_prompt(context, "vote")
         response = await self._call_llm_async(prompt, max_tokens=self.config.max_action_tokens)
-        
-        target = self._extract_player_number(response, context)
-        
-        # Prevent self-voting: if target is self, reject it
-        if target == self.player.player_number:
-            target = None
-        
-        # Verify target is in nominations
-        if target and target in nominations:
-            return target
-        
-        # Fallback: vote for suspicious player or first nomination (excluding self)
-        suspicious = self._identify_suspicious_players(context)
-        suspicious_nominated = [n for n in nominations if n in suspicious and n != self.player.player_number]
-        
-        if suspicious_nominated:
-            return suspicious_nominated[0]
-        
-        # Fallback to first nomination that isn't self
-        valid_nominations = [n for n in nominations if n != self.player.player_number]
-        if valid_nominations:
-            return valid_nominations[0]
-        
-        # Last resort: if only self is nominated, this shouldn't happen but handle gracefully
-        return nominations[0] if nominations else 1
+        return self._process_vote_choice(response, context)
     
     def get_vote_choice(self, context: AgentContext) -> int:
         """
@@ -1061,38 +1123,6 @@ class SimpleLLMAgent(BaseAgent):
         Returns:
             Player number to vote against
         """
-        nominations = context.game_state.nominations.get(context.game_state.day_number, [])
-        if not nominations:
-            # Fallback
-            alive_players = context.game_state.get_alive_players()
-            if alive_players:
-                return alive_players[0].player_number
-            return 1
-        
         prompt = self.build_strategic_prompt(context, "vote")
         response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
-        
-        target = self._extract_player_number(response, context)
-        
-        # Prevent self-voting: if target is self, reject it
-        if target == self.player.player_number:
-            target = None
-        
-        # Verify target is in nominations
-        if target and target in nominations:
-            return target
-        
-        # Fallback: vote for suspicious player or first nomination (excluding self)
-        suspicious = self._identify_suspicious_players(context)
-        suspicious_nominated = [n for n in nominations if n in suspicious and n != self.player.player_number]
-        
-        if suspicious_nominated:
-            return suspicious_nominated[0]
-        
-        # Fallback to first nomination that isn't self
-        valid_nominations = [n for n in nominations if n != self.player.player_number]
-        if valid_nominations:
-            return valid_nominations[0]
-        
-        # Last resort: if only self is nominated, this shouldn't happen but handle gracefully
-        return nominations[0] if nominations else 1
+        return self._process_vote_choice(response, context)
