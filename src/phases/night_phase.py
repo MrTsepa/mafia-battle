@@ -208,7 +208,7 @@ class NightPhaseHandler:
     def run_night_phase(self, agents: dict[int, BaseAgent]) -> None:
         """
         Run complete night phase.
-        Sequence: Mafia Kill -> Don Check -> Sheriff Check
+        Sequence: Sheriff Check -> Mafia Kill -> Don Check
         Validates that all required actions are performed.
         """
         # Only start night if we're transitioning from another phase
@@ -235,7 +235,17 @@ class NightPhaseHandler:
         sheriff_was_alive = sheriff_before is not None and sheriff_before.is_alive and sheriff_before.player_number in agents
         mafia_was_alive = len([p for p in mafia_players_before if p.is_alive and p.player_number in agents]) > 0
         
-        # 1. Mafia Kill
+        # 1. Sheriff Check (first, so sheriff can check even if killed this night)
+        if self.game_state.phase == GamePhase.NIGHT:
+            sheriff_check_result = self.process_sheriff_check(agents)
+            if sheriff_check_result is not None:
+                sheriff_check_performed = True
+            
+            # Check win condition after Sheriff check
+            if self.game_state.phase == GamePhase.GAME_OVER or self.game_state.phase == GamePhase.FAILED:
+                return
+        
+        # 2. Mafia Kill
         killed = self.process_mafia_kill(agents)
         if killed:
             mafia_kill_performed = True
@@ -276,22 +286,13 @@ class NightPhaseHandler:
         if self.game_state.phase == GamePhase.GAME_OVER or self.game_state.phase == GamePhase.FAILED:
             return
         
-        # 2. Don Check (every night) - only if game hasn't ended
+        # 3. Don Check (every night) - only if game hasn't ended
         if self.game_state.phase == GamePhase.NIGHT:
             don_check_result = self.process_don_check(agents)
             if don_check_result is not None:
                 don_check_performed = True
             
             # Check win condition again after Don check
-            if self.game_state.phase == GamePhase.GAME_OVER or self.game_state.phase == GamePhase.FAILED:
-                return
-            
-            # 3. Sheriff Check (every night) - only if game hasn't ended
-            sheriff_check_result = self.process_sheriff_check(agents)
-            if sheriff_check_result is not None:
-                sheriff_check_performed = True
-            
-            # Check win condition again after Sheriff check
             if self.game_state.phase == GamePhase.GAME_OVER or self.game_state.phase == GamePhase.FAILED:
                 return
         

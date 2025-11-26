@@ -34,7 +34,8 @@ def test_llm_context_examples():
     config = GameConfig()
     
     # Create game state with fixed seed for reproducibility
-    game_state = GameState(random_seed=42)
+    # Explicitly set event_emitter=None to prevent run creation in web UI
+    game_state = GameState(random_seed=42, event_emitter=None)
     game_state.setup_game()
     
     # Set up Day 1 history
@@ -112,7 +113,8 @@ def test_llm_context_examples():
     print("="*80)
     
     with patch.object(SimpleLLMAgent, '_call_llm', side_effect=capture_prompt) as mock_llm:
-        agent = SimpleLLMAgent(civilian, config)
+        # Explicitly pass event_emitter=None to prevent run creation
+        agent = SimpleLLMAgent(civilian, config, event_emitter=None)
         context = agent.build_context(game_state)
         prompt = agent.build_strategic_prompt(context, "speech")
         captured_prompts["day_speech"] = prompt
@@ -143,7 +145,8 @@ def test_llm_context_examples():
     game_state.eliminate_player(eliminated_player_num, "voting", day_number=2)
     
     with patch.object(SimpleLLMAgent, '_call_llm', side_effect=capture_prompt) as mock_llm:
-        agent = SimpleLLMAgent(eliminated_player, config)
+        # Explicitly pass event_emitter=None to prevent run creation
+        agent = SimpleLLMAgent(eliminated_player, config, event_emitter=None)
         context = agent.build_context(game_state)
         prompt = agent.build_strategic_prompt(context, "final_speech")
         captured_prompts["final_speech"] = prompt
@@ -172,7 +175,8 @@ def test_llm_context_examples():
     sheriff.add_sheriff_check(1, 4, "Black")
     
     with patch.object(SimpleLLMAgent, '_call_llm', side_effect=capture_prompt) as mock_llm:
-        agent = SimpleLLMAgent(sheriff, config)
+        # Explicitly pass event_emitter=None to prevent run creation
+        agent = SimpleLLMAgent(sheriff, config, event_emitter=None)
         context = agent.build_context(game_state)
         prompt = agent.build_strategic_prompt(context, "sheriff_check")
         captured_prompts["sheriff_check"] = prompt
@@ -200,7 +204,8 @@ def test_llm_context_examples():
     don.add_don_check(1, 6, "Not the Sheriff")
     
     with patch.object(SimpleLLMAgent, '_call_llm', side_effect=capture_prompt) as mock_llm:
-        agent = SimpleLLMAgent(don, config)
+        # Explicitly pass event_emitter=None to prevent run creation
+        agent = SimpleLLMAgent(don, config, event_emitter=None)
         context = agent.build_context(game_state)
         prompt = agent.build_strategic_prompt(context, "don_check")
         captured_prompts["don_check"] = prompt
@@ -230,7 +235,8 @@ def test_llm_context_examples():
     }
     
     with patch.object(SimpleLLMAgent, '_call_llm', side_effect=capture_prompt) as mock_llm:
-        agent = SimpleLLMAgent(don, config)
+        # Explicitly pass event_emitter=None to prevent run creation
+        agent = SimpleLLMAgent(don, config, event_emitter=None)
         context = agent.build_context(game_state)
         context.private_info["mafia_kill_claims"] = kill_claims
         context.private_info["_kill_decision_context"] = True
@@ -258,7 +264,8 @@ def test_llm_context_examples():
     print("="*80)
     
     with patch.object(SimpleLLMAgent, '_call_llm', side_effect=capture_prompt) as mock_llm:
-        agent = SimpleLLMAgent(mafia, config)
+        # Explicitly pass event_emitter=None to prevent run creation
+        agent = SimpleLLMAgent(mafia, config, event_emitter=None)
         context = agent.build_context(game_state)
         prompt = agent.build_strategic_prompt(context, "kill_claim")
         captured_prompts["kill_claim"] = prompt

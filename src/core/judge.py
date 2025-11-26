@@ -100,6 +100,13 @@ class Judge:
                         message=f"Invalid player number: {target_number}"
                     )
                 
+                # Prevent self-nomination
+                if target_number == speaker_number:
+                    return NominationResult(
+                        success=False,
+                        message="You cannot nominate yourself"
+                    )
+                
                 # Check if target is alive
                 target_player = self.game_state.get_player(target_number)
                 if not target_player or not target_player.is_alive:

@@ -65,6 +65,16 @@ class VotingHandler:
                 
             # Process all votes
             for player_num, vote_choice in results:
+                # Safety check: prevent self-voting
+                if vote_choice == player_num:
+                    # Reject self-vote, fallback to first other nomination
+                    valid_nominations = [n for n in nominations if n != player_num]
+                    if valid_nominations:
+                        vote_choice = valid_nominations[0]
+                    else:
+                        # If only self is nominated, skip this vote (shouldn't happen)
+                        continue
+                
                 if vote_choice in nominations:
                     self.judge.process_vote(player_num, vote_choice)
                     # Emit vote event

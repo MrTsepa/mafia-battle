@@ -290,7 +290,20 @@ For each player in speaking order:
 ```
 Game Engine → NightPhaseHandler.run_night_phase()
     ↓
-1. Mafia Kill Phase:
+1. Sheriff Check Phase (first, so sheriff can check even if killed):
+    ↓
+    agent.get_night_action(context)
+        ↓
+        build_strategic_prompt(context, "sheriff_check")
+        ↓
+        _call_llm(prompt, max_tokens=50)
+        ↓
+        _extract_player_number(response)
+        ↓
+        Return action: {"type": "sheriff_check", "target": X}
+    ↓
+    
+2. Mafia Kill Phase:
     ↓
     For each mafia player:
         ↓
@@ -331,7 +344,7 @@ Game Engine → NightPhaseHandler.run_night_phase()
     ↓
     Execute kill
     
-2. Don Check Phase:
+3. Don Check Phase:
     ↓
     agent.get_night_action(context)
         ↓
@@ -342,18 +355,6 @@ Game Engine → NightPhaseHandler.run_night_phase()
         _extract_player_number(response)
         ↓
         Return action: {"type": "don_check", "target": X}
-    
-3. Sheriff Check Phase:
-    ↓
-    agent.get_night_action(context)
-        ↓
-        build_strategic_prompt(context, "sheriff_check")
-        ↓
-        _call_llm(prompt, max_tokens=50)
-        ↓
-        _extract_player_number(response)
-        ↓
-        Return action: {"type": "sheriff_check", "target": X}
 ```
 
 ### Voting Phase Flow

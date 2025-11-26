@@ -80,27 +80,28 @@ The game alternates between:
 ### 2.5 Night Phase (Section 4.5)
 **Sequence (applies to ALL nights, including first night):**
 
-1. **Mafia Kill**:
-   - Judge: **"The mafia goes hunting."**
-   - All mafia players "wake up" and each actor makes a claim about who they think should be killed
-   - Don decides who to kill and returns one number to the judge
-   - If Don provides a valid target: Player eliminated (role not revealed, gets final speech)
-
-2. **Don Check** (every night, including first night):
-   - Judge: **"The Don wakes up, you have ten seconds."**
-   - Don selects number of suspected Sheriff
-   - Judge responds with:
-     - **"Sheriff"** if correct
-     - **"Not the Sheriff"** if incorrect
-   - Judge: **"The Don goes to sleep."**
-
-3. **Sheriff Check** (every night, including first night):
+1. **Sheriff Check** (every night, including first night):
    - Judge: **"The Sheriff wakes up, you have ten seconds."**
    - Sheriff selects number of player to check
    - Judge responds with:
      - **"Red"** = Civilian
      - **"Black"** = Mafia
    - Judge: **"The Sheriff goes to sleep."**
+   - *Note: Sheriff checks first so they can check even if they are killed this night*
+
+2. **Mafia Kill**:
+   - Judge: **"The mafia goes hunting."**
+   - All mafia players "wake up" and each actor makes a claim about who they think should be killed
+   - Don decides who to kill and returns one number to the judge
+   - If Don provides a valid target: Player eliminated (role not revealed, gets final speech)
+
+3. **Don Check** (every night, including first night):
+   - Judge: **"The Don wakes up, you have ten seconds."**
+   - Don selects number of suspected Sheriff
+   - Judge responds with:
+     - **"Sheriff"** if correct
+     - **"Not the Sheriff"** if incorrect
+   - Judge: **"The Don goes to sleep."**
 
 **Night Conduct Rules:**
 - **Complete silence**: No communication during night phase
@@ -113,12 +114,13 @@ The game alternates between:
 
 ### 3.1 Sheriff (Red Team)
 - **Ability**: Check one player per night to learn if they are red (civilian) or black (mafia)
-- **Timing**: After Don check, every night (including first night)
+- **Timing**: First, before mafia kill, every night (including first night)
 - **Information**: Receives "Red" (civilian) or "Black" (mafia)
+- **Note**: Sheriff checks first so they can check even if they are killed this night
 
 ### 3.2 Don (Black Team)
 - **Ability**: Check one player per night to learn if they are the Sheriff
-- **Timing**: Every night (including first night), before Sheriff check
+- **Timing**: After mafia kill, every night (including first night)
 - **Information**: Receives "Sheriff" or "Not the Sheriff"
 - **Mafia Knowledge**: Knows all mafia identities (provided by game engine from start)
 
@@ -199,10 +201,10 @@ The game alternates between:
 
 **Night Phase:**
 - Silent except for role actions
+- Process Sheriff checks first (every night, including first) - so sheriff can check even if killed
 - Process mafia kill: All mafia make claims, Don makes final decision (every night, including first)
 - Mafia players coordinate through game engine (know each other's identities)
-- Process Don checks (every night, including first)
-- Process Sheriff checks (every night, including first)
+- Process Don checks after mafia kill (every night, including first)
 
 **Voting Phase:**
 - Collect votes simultaneously (1.5-second window)
@@ -327,9 +329,9 @@ The game alternates between:
 ### Judge Announcements
 - **"Night falls."** - Start of game/night
 - **"Morning has come (in the city)."** - Start of day
-- **"The mafia goes hunting."** - Mafia kill phase (every night, including first)
-- **"The Don wakes up, you have ten seconds."** - Don check (every night except first)
-- **"The Sheriff wakes up, you have ten seconds."** - Sheriff check (every night except first)
+- **"The Sheriff wakes up, you have ten seconds."** - Sheriff check (first, every night including first)
+- **"The mafia goes hunting."** - Mafia kill phase (second, every night including first)
+- **"The Don wakes up, you have ten seconds."** - Don check (third, every night including first)
 - **"Game over, red/black victory."** - Game end
 - **"Accepted."** - Nomination accepted
 - **"Thank you" / "Stop"** - End voting window

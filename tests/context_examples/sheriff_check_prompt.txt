@@ -40,18 +40,18 @@ ALIVE PLAYERS:
 GAME HISTORY (chronological order):
   [Day 1, Speech #1] Day 1 speech from Player 1: I think we should gather information first. No nomination yet. PASS
   [Day 1, Speech #2] Day 1 speech from Player 2: I think we should gather information first. No nomination yet. PASS
-  [Day 1, Speech #3] Day 1 speech from Player 3: I think we should gather information first. No nomination yet. PASS
-  [Day 1, Speech #4] Day 1 speech from Player 4: I think we should gather information first. No nomination yet. PASS
-  [Day 1, Speech #5] Day 1 speech from Player 5: I think we should gather information first. No nomination yet. PASS
+  [Day 1, Speech #3] Day 1 speech from Player 4: I think we should gather information first. No nomination yet. PASS
+  [Day 1, Speech #4] Day 1 speech from Player 5: I think we should gather information first. No nomination yet. PASS
   [Day 1] Player 3 was nominated
   [Day 1] Player 5 was nominated
   [Day 1] P1, P2, P4, P6 → Player 3
   [Day 1] → Player 3 was eliminated by [P1, P2, P4, P6]
-  [Day 2, Speech #1] Day 2 speech from Player 1: Based on yesterday's events, I think we need to investigate further. PASS
-  [Day 2, Speech #2] Day 2 speech from Player 2: Based on yesterday's events, I think we need to investigate further. PASS
-  [Day 2, Speech #3] Day 2 speech from Player 5: Based on yesterday's events, I think we need to investigate further. PASS
+  [Day 1, Final Speech] Day 1 speech from Player 3: I think we should gather information first. No nomination yet. PASS
+  [Day 2, Speech #1] Day 2 speech from Player 2: Based on yesterday's events, I think we need to investigate further. PASS
+  [Day 2, Speech #2] Day 2 speech from Player 5: Based on yesterday's events, I think we need to investigate further. PASS
   [Day 2] Player 5 was nominated
   [Day 2] → Player 1 was eliminated (voting)
+  [Day 2, Final Speech] Day 2 speech from Player 1: Based on yesterday's events, I think we need to investigate further. PASS
   [Night 1] Player 4 was killed
 
 SHERIFF CHECK:

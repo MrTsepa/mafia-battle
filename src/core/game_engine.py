@@ -236,10 +236,10 @@ class GameState:
             mafia_players = self.get_mafia_players()
             civilian_players = self.get_civilian_players()
             
-            # Build player list with roles (hidden for alive players)
+            # Build player list with roles (always visible in viewer)
             players_data = []
             for player in self.players:
-                role_name = player.role.role_type.value.title() if not player.is_alive else "Unknown"
+                role_name = player.role.role_type.value.title()
                 team = "Red" if player.role.team.value == "red" else "Black"
                 players_data.append({
                     "number": player.player_number,

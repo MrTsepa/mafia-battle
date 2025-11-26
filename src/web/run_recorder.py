@@ -119,11 +119,49 @@ class RunRecorder:
                 except:
                     pass
             
-            # Count events
+            # Count events and extract game outcome
             if events_file.exists():
                 try:
                     with open(events_file, 'r') as f:
-                        run_info["event_count"] = sum(1 for _ in f)
+                        event_count = 0
+                        game_outcome = None
+                        game_failed = False
+                        
+                        for line in f:
+                            if line.strip():
+                                event_count += 1
+                                try:
+                                    event = json.loads(line)
+                                    if event.get("event_type") == "game_over":
+                                        winner = event.get("data", {}).get("winner")
+                                        if winner == "red":
+                                            game_outcome = "Civilians Win"
+                                        elif winner == "black":
+                                            game_outcome = "Mafia Win"
+                                        else:
+                                            game_outcome = "Draw"
+                                    elif event.get("event_type") == "fatal_error":
+                                        game_failed = True
+                                        game_outcome = "Failed"
+                                    elif event.get("event_type") == "game_state_update":
+                                        # Check if game is over from state
+                                        game_state = event.get("data", {}).get("game_state", {})
+                                        if game_state.get("phase") == "game_over":
+                                            winner = game_state.get("winner")
+                                            if winner == "red":
+                                                game_outcome = "Civilians Win"
+                                            elif winner == "black":
+                                                game_outcome = "Mafia Win"
+                                        elif game_state.get("phase") == "failed":
+                                            game_failed = True
+                                            game_outcome = "Failed"
+                                except:
+                                    pass
+                        
+                        run_info["event_count"] = event_count
+                        if game_outcome:
+                            run_info["game_outcome"] = game_outcome
+                            run_info["game_failed"] = game_failed
                 except:
                     run_info["event_count"] = 0
             

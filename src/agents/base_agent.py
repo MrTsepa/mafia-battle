@@ -134,6 +134,17 @@ class BaseAgent(ABC):
         # Add speeches with day information
         # Match speeches to days: speeches happen before nominations in the same day
         # Strategy: If a player nominated on day X, their speech on that day happened before the nomination
+        # Final speeches happen after elimination on the day of elimination
+        
+        # First, identify elimination days for each player
+        elimination_days = {}  # {player_num: day_number}
+        for action in game_state.action_log:
+            if action["type"] == "player_eliminated":
+                player_num = action["data"]["player"]
+                day = action["data"].get("day_number")
+                if day:
+                    elimination_days[player_num] = day
+        
         all_speeches = []
         for player in game_state.players:
             for i, speech in enumerate(player.speeches):
@@ -141,21 +152,55 @@ class BaseAgent(ABC):
                     "type": "speech",
                     "player": player.player_number,
                     "speech": speech,
-                    "index": i
+                    "index": i,
+                    "is_final": False  # Will be determined below
                 })
+        
+        # Identify final speeches: if a player was eliminated, their last speech(s) after elimination are final speeches
+        for player_num, elim_day in elimination_days.items():
+            player_speeches = [s for s in all_speeches if s["player"] == player_num]
+            if not player_speeches:
+                continue
+            
+            # Count how many speeches this player made before elimination
+            # A player typically speaks once per day they're alive
+            # If they have more speeches than days alive, the extra ones are final speeches
+            # For simplicity, if eliminated on day X, speeches after index (X-1) are likely final speeches
+            # But we'll use a simpler heuristic: the last speech of an eliminated player is their final speech
+            # Actually, final speeches are added AFTER elimination, so they're always the last speech(s)
+            # If a player was eliminated on day X, check if their last speech should be on day X (final speech)
+            
+            # Mark the last speech as final if player was eliminated
+            if player_speeches:
+                player_speeches[-1]["is_final"] = True
+                player_speeches[-1]["elimination_day"] = elim_day
         
         # Match speeches to days
         # Strategy: Each player speaks once per day during day phases
         # Use nominations as anchors, then distribute remaining speeches evenly
+        # Final speeches go to the day of elimination
         
         # Track speeches per player per day
         player_speech_counts = {}  # {player_num: {day: count}}
         for player in game_state.players:
             player_speech_counts[player.player_number] = {}
         
-        # First pass: match speeches to days based on nominations
+        # First pass: assign final speeches to elimination day
+        for speech_data in all_speeches:
+            if speech_data.get("is_final") and "elimination_day" in speech_data:
+                speech_data["day"] = speech_data["elimination_day"]
+                player_num = speech_data["player"]
+                elim_day = speech_data["elimination_day"]
+                if elim_day not in player_speech_counts[player_num]:
+                    player_speech_counts[player_num][elim_day] = 0
+                player_speech_counts[player_num][elim_day] += 1
+        
+        # Second pass: match speeches to days based on nominations
         # If a player nominated on day X, their first speech is likely from that day
         for speech_data in all_speeches:
+            if speech_data.get("day") is not None:
+                continue  # Already assigned (final speech)
+            
             player_num = speech_data["player"]
             day_for_speech = None
             
@@ -175,7 +220,7 @@ class BaseAgent(ABC):
                     player_speech_counts[player_num][day_for_speech] = 0
                 player_speech_counts[player_num][day_for_speech] += 1
         
-        # Second pass: assign remaining speeches to days in order
+        # Third pass: assign remaining speeches to days in order
         # Distribute speeches evenly across days, ensuring each player has at most one speech per day
         speeches_per_day = {}
         all_days = sorted(set(game_state.nominations.keys()) | {game_state.day_number})
@@ -213,11 +258,19 @@ class BaseAgent(ABC):
         # Use day number and speech order to create approximate timestamps
         for idx, speech_data in enumerate(all_speeches):
             day = speech_data.get("day", game_state.day_number)
-            # Create approximate timestamp: speeches happen sequentially during the day
-            # Count speeches on the same day that come before this one
-            speech_index = sum(1 for i, s in enumerate(all_speeches) if i < idx and s.get("day") == day) + 1
-            # Format: "Day X, Speech Y" or approximate time
-            speech_data["timestamp"] = f"Day {day}, Speech #{speech_index}"
+            is_final = speech_data.get("is_final", False)
+            
+            if is_final:
+                # Final speeches happen after elimination, so they get a special timestamp
+                # They should appear after eliminations in chronological order
+                speech_data["timestamp"] = f"Day {day}, Final Speech"
+            else:
+                # Create approximate timestamp: speeches happen sequentially during the day
+                # Count speeches on the same day that come before this one
+                speech_index = sum(1 for i, s in enumerate(all_speeches) if i < idx and s.get("day") == day and not s.get("is_final", False)) + 1
+                # Format: "Day X, Speech Y" or approximate time
+                speech_data["timestamp"] = f"Day {day}, Speech #{speech_index}"
+            
             history.append(speech_data)
         
         # Add nominations

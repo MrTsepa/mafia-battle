@@ -45,11 +45,12 @@
         }
 
         h2 {
-            font-size: 1.3em;
-            margin-bottom: 15px;
+            font-size: 1.1em;
+            margin-bottom: 8px;
+            margin-top: 0;
             color: #667eea;
             border-bottom: 2px solid #667eea;
-            padding-bottom: 8px;
+            padding-bottom: 4px;
         }
 
         .run-list {
@@ -92,6 +93,35 @@
             color: rgba(255, 255, 255, 0.9);
         }
 
+        .outcome-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .outcome-civilians {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .outcome-mafia {
+            background: #2c3e50;
+            color: white;
+        }
+
+        .outcome-draw {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .outcome-failed {
+            background: #e67e22;
+            color: white;
+        }
+
         .game-view {
             display: grid;
             grid-template-columns: 350px 1fr;
@@ -100,42 +130,44 @@
 
         .status-badge {
             display: inline-block;
-            padding: 6px 12px;
-            border-radius: 20px;
+            padding: 4px 10px;
+            border-radius: 16px;
             font-weight: bold;
-            font-size: 0.9em;
-            margin: 5px 0;
+            font-size: 0.85em;
+            margin: 0;
         }
 
         .phase-day { background: #4CAF50; color: white; }
         .phase-night { background: #2c3e50; color: white; }
         .phase-voting { background: #e74c3c; color: white; }
         .phase-game-over { background: #9b59b6; color: white; }
+        .phase-failed { background: #e67e22; color: white; }
 
         .stats-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 15px;
+            gap: 6px;
+            margin-bottom: 0;
         }
 
         .stat-box {
             background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
+            padding: 8px;
+            border-radius: 6px;
             text-align: center;
         }
 
         .stat-value {
-            font-size: 2em;
+            font-size: 1.5em;
             font-weight: bold;
             color: #667eea;
+            line-height: 1.2;
         }
 
         .stat-label {
-            font-size: 0.9em;
+            font-size: 0.75em;
             color: #666;
-            margin-top: 5px;
+            margin-top: 2px;
         }
 
         .event-log {
@@ -228,14 +260,24 @@
 
         .player-list {
             list-style: none;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            max-height: calc(100vh - 400px);
+            overflow-y: auto;
+            margin-bottom: 0;
         }
 
         .player-item {
-            padding: 10px;
-            margin: 8px 0;
-            border-radius: 8px;
-            border-left: 4px solid;
+            padding: 6px 8px;
+            margin: 0;
+            border-radius: 6px;
+            border-left: 3px solid;
             background: #f8f9fa;
+            font-size: 0.85em;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
         }
 
         .player-alive { border-left-color: #4CAF50; }
@@ -281,16 +323,22 @@
         <div id="gameView" class="panel" style="display: none;">
             <div class="game-view">
                 <div class="panel">
-                    <h2>Game Status</h2>
+                    <h2>Players</h2>
+                    <ul class="player-list" id="playerList">
+                        <!-- Players will be populated here -->
+                    </ul>
+                    
+                    <h2 style="margin-top: 15px;">Game Status</h2>
                     <div id="gameStatus">
                         <div class="status-badge phase-day" id="phaseBadge">-</div>
-                        <div style="margin-top: 15px;">
-                            <strong>Day:</strong> <span id="dayNumber">-</span><br>
+                        <div style="margin-top: 8px; font-size: 0.9em;">
+                            <strong>Day:</strong> <span id="dayNumber">-</span> | 
                             <strong>Night:</strong> <span id="nightNumber">-</span>
                         </div>
+                        <div id="gameOutcome" style="margin-top: 8px; font-size: 0.85em; font-weight: bold; display: none;"></div>
                     </div>
                     
-                    <h2 style="margin-top: 20px;">Statistics</h2>
+                    <h2 style="margin-top: 15px;">Statistics</h2>
                     <div class="stats-grid">
                         <div class="stat-box">
                             <div class="stat-value" id="aliveCount">-</div>
@@ -309,11 +357,6 @@
                             <div class="stat-label">Eliminated</div>
                         </div>
                     </div>
-
-                    <h2 style="margin-top: 20px;">Players</h2>
-                    <ul class="player-list" id="playerList">
-                        <!-- Players will be populated here -->
-                    </ul>
                 </div>
 
                 <div class="panel">
@@ -359,10 +402,28 @@
                     const eventCount = run.event_count || 0;
                     const metadata = run.metadata || {};
                     const config = metadata.config || {};
+                    const gameOutcome = run.game_outcome;
+                    const gameFailed = run.game_failed || false;
+                    
+                    let outcomeBadge = '';
+                    if (gameOutcome) {
+                        let badgeClass = 'outcome-badge';
+                        if (gameFailed) {
+                            badgeClass += ' outcome-failed';
+                        } else if (gameOutcome.includes('Civilians')) {
+                            badgeClass += ' outcome-civilians';
+                        } else if (gameOutcome.includes('Mafia')) {
+                            badgeClass += ' outcome-mafia';
+                        } else {
+                            badgeClass += ' outcome-draw';
+                        }
+                        outcomeBadge = `<div class="${badgeClass}">${escapeHtml(gameOutcome)}</div>`;
+                    }
                     
                     li.innerHTML = `
                         <div class="run-name">${escapeHtml(run.name)}</div>
                         <div class="run-meta">
+                            ${outcomeBadge}
                             ${eventCount} events<br>
                             ${config.llm_model ? 'Model: ' + config.llm_model : ''}
                         </div>
@@ -555,13 +616,23 @@
                             players.length = 0;
                             players.push(...data.game_state.players);
                         }
+                        // Track game over state from state updates
+                        if (data.game_state.phase === 'game_over' || data.game_state.phase === 'failed') {
+                            gameState.phase = data.game_state.phase;
+                            gameState.winner = data.game_state.winner;
+                        }
                     }
                     break;
                 case 'game_over':
+                    gameState.phase = 'game_over';
+                    gameState.winner = data.winner;
+                    gameState.game_over_reason = data.reason;
                     const winner = data.winner === 'red' ? 'Civilians (Red Team)' : 'Mafia (Black Team)';
                     addEvent('announcement', `GAME OVER - ${winner} WIN!`, eventTime);
                     break;
                 case 'fatal_error':
+                    gameState.phase = 'failed';
+                    gameState.winner = null;
                     addEvent('elimination', `FATAL ERROR: ${data.error_message}`, eventTime);
                     break;
                 case 'llm_metadata':
@@ -683,6 +754,7 @@
             const mafiaCount = document.getElementById('mafiaCount');
             const civilianCount = document.getElementById('civilianCount');
             const eliminatedCount = document.getElementById('eliminatedCount');
+            const gameOutcome = document.getElementById('gameOutcome');
 
             const phase = gameState.phase || 'setup';
             const phaseClass = `phase-${phase.replace('_', '-')}`;
@@ -695,6 +767,20 @@
             mafiaCount.textContent = gameState.mafia_count || 0;
             civilianCount.textContent = gameState.civilian_count || 0;
             eliminatedCount.textContent = (gameState.alive_count ? 10 - gameState.alive_count : 0);
+
+            // Show game outcome if game is over
+            if (phase === 'game_over' && gameState.winner) {
+                const winnerText = gameState.winner === 'red' ? 'Civilians Win' : 'Mafia Win';
+                gameOutcome.textContent = `🏆 ${winnerText}`;
+                gameOutcome.style.display = 'block';
+                gameOutcome.style.color = gameState.winner === 'red' ? '#e74c3c' : '#2c3e50';
+            } else if (phase === 'failed') {
+                gameOutcome.textContent = '❌ Game Failed';
+                gameOutcome.style.display = 'block';
+                gameOutcome.style.color = '#e67e22';
+            } else {
+                gameOutcome.style.display = 'none';
+            }
         }
 
         function updatePlayerList(players) {
@@ -705,12 +791,11 @@
                 const li = document.createElement('li');
                 li.className = `player-item ${player.is_alive ? 'player-alive' : 'player-eliminated'} team-${player.team.toLowerCase()}`;
                 
-                const roleDisplay = player.is_alive ? 'Unknown' : player.role;
                 li.innerHTML = `
-                    <div style="font-weight: bold; font-size: 1.1em; color: #667eea;">Player ${player.number}</div>
-                    <div style="font-size: 0.9em; color: #666; margin-top: 4px;">${roleDisplay} (${player.team})</div>
-                    <div style="font-size: 0.8em; color: #999; margin-top: 4px;">
-                        ${player.is_alive ? '✓ Alive' : '✗ Eliminated'}
+                    <div style="font-weight: bold; font-size: 0.95em; color: #667eea;">P${player.number}</div>
+                    <div style="font-size: 0.8em; color: #495057; font-weight: 500;">${player.role}</div>
+                    <div style="font-size: 0.75em; color: #6c757d;">
+                        ${player.team} • ${player.is_alive ? '✓' : '✗'}
                     </div>
                 `;
                 

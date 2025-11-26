@@ -67,7 +67,6 @@ class SimpleLLMAgent(BaseAgent):
         self.checked_players: set[int] = set()  # For sheriff/don
         self.suspicious_players: set[int] = set()  # Players to investigate
         self.trusted_players: set[int] = set()  # Players we trust
-        self.voting_patterns: Dict[int, List[int]] = defaultdict(list)  # {player: [who_they_voted_for]}
         self.speech_analysis: Dict[int, List[str]] = defaultdict(list)  # {player: [speeches]}
     
     async def _call_llm_async(self, prompt: str, max_tokens: int = 200, temperature: Optional[float] = None) -> str:
@@ -245,42 +244,6 @@ class SimpleLLMAgent(BaseAgent):
         
         return None
     
-    def _analyze_voting_patterns(self, context: AgentContext) -> Dict[str, Any]:
-        """
-        Analyze voting patterns to identify suspicious behavior.
-        
-        Args:
-            context: Current game context
-            
-        Returns:
-            Dictionary with analysis results
-        """
-        analysis = {
-            "suspicious_voters": [],
-            "coordinated_votes": [],
-            "vote_targets": defaultdict(int)
-        }
-        
-        # Analyze votes from previous days
-        for day, votes in context.game_state.votes.items():
-            if day < context.game_state.day_number:
-                # Count who voted for whom
-                for voter, target in votes.items():
-                    analysis["vote_targets"][target] += 1
-                    self.voting_patterns[voter].append(target)
-        
-        # Find players who consistently vote together (possible mafia coordination)
-        if len(self.voting_patterns) >= 2:
-            for player1, votes1 in self.voting_patterns.items():
-                for player2, votes2 in self.voting_patterns.items():
-                    if player1 != player2 and player1 < player2:
-                        # Check if they voted for same targets
-                        common_votes = set(votes1) & set(votes2)
-                        if len(common_votes) >= 2:
-                            analysis["coordinated_votes"].append((player1, player2))
-        
-        return analysis
-    
     def _identify_suspicious_players(self, context: AgentContext) -> List[int]:
         """
         Identify suspicious players based on game history.
@@ -331,6 +294,10 @@ class SimpleLLMAgent(BaseAgent):
         current_day = context.game_state.day_number
         
         # Collect all speeches with timestamps
+        # Separate regular speeches from final speeches
+        regular_speeches = []
+        final_speeches = []
+        
         for event in context.public_history:
             if event.get("type") == "speech":
                 day = event.get("day", current_day)
@@ -339,6 +306,8 @@ class SimpleLLMAgent(BaseAgent):
                 player = event.get("player", "?")
                 timestamp = event.get("timestamp", f"Day {day}, Speech #?")
                 speech = event.get("speech", "")
+                is_final = event.get("is_final", False)
+                
                 # Extract speech number from timestamp for better sorting
                 speech_num = 0
                 if "Speech #" in timestamp:
@@ -346,15 +315,29 @@ class SimpleLLMAgent(BaseAgent):
                         speech_num = int(timestamp.split("Speech #")[1])
                     except:
                         pass
-                events.append({
+                
+                speech_event = {
                     "type": "speech",
                     "day": day,
                     "night": None,
                     "timestamp": timestamp,
                     "player": player,
                     "text": speech,
-                    "sort_key": (day, 0, speech_num, player)  # Speeches come first, sorted by speech number
-                })
+                    "is_final": is_final
+                }
+                
+                if is_final:
+                    # Final speeches should appear after eliminations on the same day
+                    # Use a higher sort order (4) so they come after eliminations (3)
+                    speech_event["sort_key"] = (day, 4, speech_num, player)
+                    final_speeches.append(speech_event)
+                else:
+                    # Regular speeches come first, sorted by speech number
+                    speech_event["sort_key"] = (day, 0, speech_num, player)
+                    regular_speeches.append(speech_event)
+        
+        # Add regular speeches first
+        events.extend(regular_speeches)
         
         # Collect nominations with timestamps (they happen after speeches on same day)
         for day, nominations in context.game_state.nominations.items():
@@ -446,6 +429,9 @@ class SimpleLLMAgent(BaseAgent):
                     "sort_key": (night + 1000, 0, 0, killed_player)  # Night events after day events
                 })
         
+        # Add final speeches after eliminations
+        events.extend(final_speeches)
+        
         # Sort all events chronologically
         events.sort(key=lambda x: x["sort_key"])
         
@@ -454,8 +440,14 @@ class SimpleLLMAgent(BaseAgent):
         for event in events:
             if event["type"] == "speech":
                 # Format: [Day X, Speech #Y] speech text...
+                # For final speeches, add a marker to make it clear
                 timestamp = event.get("timestamp", f"Day {event['day']}, Speech #?")
-                formatted_line = f"[{timestamp}] {event['text']}"
+                is_final = event.get("is_final", False)
+                if is_final:
+                    # Mark as final speech for clarity
+                    formatted_line = f"[Day {event['day']}, Final Speech] {event['text']}"
+                else:
+                    formatted_line = f"[{timestamp}] {event['text']}"
                 formatted.append(formatted_line)
             
             elif event["type"] == "nomination":
@@ -652,23 +644,6 @@ class SimpleLLMAgent(BaseAgent):
             prompt_parts.append(f"  Player {player.player_number}{status}")
         prompt_parts.append("")
         
-        # Add voting pattern analysis (only for day/voting phases, skip for night actions)
-        if context.current_phase in [GamePhase.DAY, GamePhase.VOTING]:
-            analysis = self._analyze_voting_patterns(context)
-            suspicious_players = self._identify_suspicious_players(context)
-            
-            if suspicious_players:
-                prompt_parts.append("SUSPICIOUS PLAYERS (based on voting patterns):")
-                for player_num in suspicious_players:
-                    prompt_parts.append(f"  Player {player_num}")
-                prompt_parts.append("")
-            
-            if analysis["coordinated_votes"]:
-                prompt_parts.append("COORDINATED VOTING PATTERNS (possible mafia):")
-                for p1, p2 in analysis["coordinated_votes"][:3]:  # Show top 3
-                    prompt_parts.append(f"  Players {p1} and {p2} voted together multiple times")
-                prompt_parts.append("")
-        
         # Add game history - comprehensive context for all actions in chronological order
         if action_type in ["kill_claim", "kill_decision", "sheriff_check", "don_check"]:
             # Night actions: include all events in chronological order
@@ -700,6 +675,8 @@ class SimpleLLMAgent(BaseAgent):
             ])
         elif action_type == "speech":
             nominations = context.game_state.nominations.get(context.game_state.day_number, [])
+            is_nominated = self.player.player_number in nominations
+            
             prompt_parts.extend([
                 "YOUR TURN TO SPEAK:",
                 "- You have up to 200 words",
@@ -709,6 +686,27 @@ class SimpleLLMAgent(BaseAgent):
                 "- If you're sheriff, be careful not to reveal your role",
                 "- Coordinate with your team if possible",
                 f"- Current nominations: {nominations}",
+            ])
+            
+            # Add critical strategic guidance
+            if self.player.is_civilian:
+                prompt_parts.append("- IMPORTANT: As a civilian, you know you are innocent - DO NOT nominate yourself")
+                if is_nominated:
+                    prompt_parts.extend([
+                        "- CRITICAL: You are currently nominated! If only one player is nominated, you will be automatically eliminated",
+                        "- You MUST nominate someone else (the most suspicious player) to create a voting choice",
+                        "- This is your only chance to avoid automatic elimination - nominate the player you believe is mafia",
+                    ])
+                else:
+                    prompt_parts.extend([
+                        "- If you are nominated later, make sure to nominate someone else to avoid automatic elimination",
+                        "- Focus on nominating players you believe are mafia based on voting patterns and behavior",
+                    ])
+            else:
+                # Mafia can still nominate strategically, but shouldn't nominate themselves
+                prompt_parts.append("- DO NOT nominate yourself")
+            
+            prompt_parts.extend([
                 "",
                 "Generate your strategic speech:",
             ])
@@ -719,6 +717,8 @@ class SimpleLLMAgent(BaseAgent):
                 f"Nominated players: {nominations}",
                 "- Vote for the player you believe is most likely mafia",
                 "- Consider voting patterns and suspicious behavior",
+                "- IMPORTANT: If you are a civilian, you know you are innocent - DO NOT vote for yourself",
+                "- If you are nominated, you must still vote for someone else (not yourself)",
                 "- Return ONLY the player number (e.g., '5' or 'Player 5')",
             ])
         elif action_type == "sheriff_check":
@@ -1028,18 +1028,28 @@ class SimpleLLMAgent(BaseAgent):
         
         target = self._extract_player_number(response, context)
         
+        # Prevent self-voting: if target is self, reject it
+        if target == self.player.player_number:
+            target = None
+        
         # Verify target is in nominations
         if target and target in nominations:
             return target
         
-        # Fallback: vote for suspicious player or first nomination
+        # Fallback: vote for suspicious player or first nomination (excluding self)
         suspicious = self._identify_suspicious_players(context)
-        suspicious_nominated = [n for n in nominations if n in suspicious]
+        suspicious_nominated = [n for n in nominations if n in suspicious and n != self.player.player_number]
         
         if suspicious_nominated:
             return suspicious_nominated[0]
         
-        return nominations[0]
+        # Fallback to first nomination that isn't self
+        valid_nominations = [n for n in nominations if n != self.player.player_number]
+        if valid_nominations:
+            return valid_nominations[0]
+        
+        # Last resort: if only self is nominated, this shouldn't happen but handle gracefully
+        return nominations[0] if nominations else 1
     
     def get_vote_choice(self, context: AgentContext) -> int:
         """
@@ -1064,15 +1074,25 @@ class SimpleLLMAgent(BaseAgent):
         
         target = self._extract_player_number(response, context)
         
+        # Prevent self-voting: if target is self, reject it
+        if target == self.player.player_number:
+            target = None
+        
         # Verify target is in nominations
         if target and target in nominations:
             return target
         
-        # Fallback: vote for suspicious player or first nomination
+        # Fallback: vote for suspicious player or first nomination (excluding self)
         suspicious = self._identify_suspicious_players(context)
-        suspicious_nominated = [n for n in nominations if n in suspicious]
+        suspicious_nominated = [n for n in nominations if n in suspicious and n != self.player.player_number]
         
         if suspicious_nominated:
             return suspicious_nominated[0]
         
-        return nominations[0]
+        # Fallback to first nomination that isn't self
+        valid_nominations = [n for n in nominations if n != self.player.player_number]
+        if valid_nominations:
+            return valid_nominations[0]
+        
+        # Last resort: if only self is nominated, this shouldn't happen but handle gracefully
+        return nominations[0] if nominations else 1
