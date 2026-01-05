@@ -15,7 +15,7 @@ except ImportError:
 try:
     from openai import OpenAI
 except ImportError:
-    print("ERROR: OpenAI package not installed. Install with: pip install openai")
+    print("ERROR: OpenAI package not installed. Install with: uv sync")
     sys.exit(1)
 
 
