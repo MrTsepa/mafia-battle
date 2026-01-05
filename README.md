@@ -41,26 +41,31 @@ mafia-battle/
 
 ## Setup
 
-1. Install dependencies:
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/):
 ```bash
-pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-2. Set up environment variables (create `.env` file):
+2. Sync dependencies with uv (this will also create the `.venv` automatically):
+```bash
+uv sync
+```
+
+3. Set up environment variables (create `.env` file):
 ```
 OPENAI_API_KEY=your_key_here
 ANTHROPIC_API_KEY=your_key_here  # Optional
 ```
 
-3. Run a game:
+4. Run a game:
 ```bash
-python main.py
+uv run python main.py
 ```
 
-4. View game runs in browser:
+5. View game runs in browser:
 ```bash
 # In a separate terminal, start the viewer server
-python viewer.py
+uv run python viewer.py
 
 # Then open http://127.0.0.1:5000 in your browser
 ```
@@ -86,8 +91,8 @@ Games are automatically saved to the `runs/` folder:
 
 Start the viewer server in a separate terminal:
 ```bash
-python viewer.py
-# Or with custom port: python viewer.py --port 8080
+uv run python viewer.py
+# Or with custom port: uv run python viewer.py --port 8080
 ```
 
 Then open http://127.0.0.1:5000 in your browser to:

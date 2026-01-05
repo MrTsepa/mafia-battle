@@ -49,7 +49,7 @@ class SimpleLLMAgent(BaseAgent):
         
         # Initialize OpenAI client if available
         if OpenAI is None:
-            raise ImportError("OpenAI package not installed. Install with: pip install openai")
+            raise ImportError("OpenAI package not installed. Install with: uv sync")
         
         api_key = os.getenv("OPENAI_API_KEY")
         # Allow initialization without API key in test environments (tests use mocking)

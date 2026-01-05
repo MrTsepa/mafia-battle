@@ -2,9 +2,9 @@
 
 ## Python Environment
 
-- Always use `.venv` virtual environment for running Python code
-- Activate `.venv` before executing any Python commands
-- When running Python scripts or tests, ensure `.venv` is activated first
+- Use **uv** for environment management and dependency installation
+- Install dependencies with `uv sync` (it will create and maintain the `.venv` automatically)
+- Run commands via `uv run ...` after syncing dependencies
 
 ## Code testing
 - If making substaintial changes to code remember to rerun tests (`pytest tests/ -v`) to make sure everything works

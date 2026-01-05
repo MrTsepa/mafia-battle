@@ -4,26 +4,26 @@ Comprehensive test suite for the Mafia game simulation with mocked LLM calls.
 
 ## Setup
 
-Install test dependencies:
+Install test dependencies (creates the virtual environment automatically):
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ## Running Tests
 
 Run all tests:
 ```bash
-pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 Run specific test file:
 ```bash
-pytest tests/test_game_engine.py -v
+uv run pytest tests/test_game_engine.py -v
 ```
 
 Run with coverage:
 ```bash
-pytest tests/ --cov=src --cov-report=html
+uv run pytest tests/ --cov=src --cov-report=html
 ```
 
 ## Test Structure
@@ -95,7 +95,7 @@ This two-layer approach ensures:
 ## Example Test Run
 
 ```bash
-$ pytest tests/test_game_engine.py -v
+uv run pytest tests/test_game_engine.py -v
 
 tests/test_game_engine.py::test_game_setup PASSED
 tests/test_game_engine.py::test_role_distribution PASSED
