@@ -69,13 +69,13 @@ class SimpleLLMAgent(BaseAgent):
         # Track strategic information
         self.checked_players: set[int] = set()  # For sheriff/don
     
-    def _build_api_params(self, prompt: str, max_tokens: int, temperature: Optional[float]) -> Dict[str, Any]:
+    def _build_api_params(self, prompt: str, max_tokens: Optional[int], temperature: Optional[float]) -> Dict[str, Any]:
         """
         Build API parameters for OpenAI API calls.
-        
+
         Args:
             prompt: The prompt to send
-            max_tokens: Maximum tokens in response
+            max_tokens: Maximum tokens in response (None for unlimited)
             temperature: Temperature for generation
             
         Returns:
@@ -90,20 +90,21 @@ class SimpleLLMAgent(BaseAgent):
             "temperature": temperature or self.temperature
         }
         
-        # Use max_completion_tokens for newer models, max_tokens for older ones
-        if "gpt-5" in self.model:
-            api_params["max_completion_tokens"] = max_tokens
-            # gpt-5-mini only supports default temperature (1), don't set custom temperature
-            if "temperature" in api_params:
-                del api_params["temperature"]
-        elif "gpt-4o" in self.model:
-            api_params["max_completion_tokens"] = max_tokens
-        else:
-            api_params["max_tokens"] = max_tokens
+        if max_tokens is not None:
+            # Use max_completion_tokens for newer models, max_tokens for older ones
+            if "gpt-5" in self.model:
+                api_params["max_completion_tokens"] = max_tokens
+                # gpt-5-mini only supports default temperature (1), don't set custom temperature
+                if "temperature" in api_params:
+                    del api_params["temperature"]
+            elif "gpt-4o" in self.model:
+                api_params["max_completion_tokens"] = max_tokens
+            else:
+                api_params["max_tokens"] = max_tokens
         
         return api_params
     
-    def _process_llm_response(self, response: Any, max_tokens: int, latency_ms: float) -> str:
+    def _process_llm_response(self, response: Any, max_tokens: Optional[int], latency_ms: float) -> str:
         """
         Process LLM API response and extract content.
         
@@ -151,7 +152,7 @@ class SimpleLLMAgent(BaseAgent):
         
         return content
     
-    async def _call_llm_async(self, prompt: str, max_tokens: int = 200, temperature: Optional[float] = None) -> str:
+    async def _call_llm_async(self, prompt: str, max_tokens: Optional[int] = None, temperature: Optional[float] = None) -> str:
         """
         Async version of _call_llm for parallel execution.
         """
@@ -179,7 +180,7 @@ class SimpleLLMAgent(BaseAgent):
                 f"LLM API call failed for Player {self.player.player_number}: {e}"
             )
     
-    def _call_llm(self, prompt: str, max_tokens: int = 200, temperature: Optional[float] = None) -> str:
+    def _call_llm(self, prompt: str, max_tokens: Optional[int] = None, temperature: Optional[float] = None) -> str:
         """
         Call OpenAI API with the given prompt.
         

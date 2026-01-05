@@ -34,8 +34,6 @@ def mock_llm_calls():
 def game_config():
     """Test game configuration."""
     return GameConfig(
-        max_speech_tokens=400,
-        tie_break_speech_tokens=200,
         use_judge_announcements=False  # Disable for cleaner test output
     )
 
