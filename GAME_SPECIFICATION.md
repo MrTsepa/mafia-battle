@@ -183,8 +183,8 @@ The game alternates between:
 ### 5.3 Judge/Moderator System
 **Judge Must:**
 - Enforce turn order
-- Enforce speech length limits (token/word limits for speeches)
-- Manage response time limits for night actions (Don/Sheriff checks, mafia coordination)
+- Handle speech flow without enforcing strict length limits by default
+- Manage night actions without hard timeouts unless configured
 - Process nominations
 - Collect and count votes accurately
 - Execute night actions in correct order
@@ -195,7 +195,7 @@ The game alternates between:
 ### 5.4 Communication Protocol
 **Day Phase:**
 - Structured turn-based speech
-- Enforce speech length limits (token/word count)
+- Support speeches without strict token/word caps by default
 - Parse nominations from speech
 - Validate speech endings ("PASS"/"THANK YOU")
 
@@ -207,7 +207,7 @@ The game alternates between:
 - Process Don checks after mafia kill (every night, including first)
 
 **Voting Phase:**
-- Collect votes simultaneously (1.5-second window)
+- Collect votes simultaneously (no default timing window)
 - Players submit vote choices through interface
 - Handle default votes
 - Process tie-breaking

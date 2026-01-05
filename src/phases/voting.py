@@ -179,7 +179,7 @@ class VotingHandler:
                 context = agent.build_context(self.game_state)
                 speech = agent.get_day_speech(context)
                 
-                # Token limits are enforced by LLM call (tie_break_speech_tokens)
+                # Token limits are handled by LLM configuration (unlimited by default)
                 # No word-based truncation needed
                 
                 if not self.judge.validate_speech_ending(speech):
