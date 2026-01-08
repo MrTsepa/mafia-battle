@@ -1,6 +1,8 @@
 # Mafia Game Simulation
 
 A text-based Mafia game simulation where LLM agents play the classic social deduction game.
+![Screenshot of Mafia Game Simulation](static/image.png)
+
 
 ## Game Overview
 
