@@ -19,6 +19,7 @@ class VotingHandler:
         self.judge = judge
         self.event_emitter = event_emitter
         self.tie_break_round = 0
+        self.last_tie_break_voters: List[int] = []
     
     async def collect_votes_async(self, agents: dict[int, BaseAgent]) -> None:
         """
@@ -150,13 +151,29 @@ class VotingHandler:
         
         # Tie detected
         return None
+
+    def _get_voters_for_target(self, target: int) -> List[int]:
+        """Get all voters for a target, including default votes from non-voters."""
+        day = self.game_state.day_number
+        votes = self.game_state.votes.get(day, {})
+        voters = [voter for voter, voted_target in votes.items() if voted_target == target]
+        nominations = self.judge.get_nominated_players()
+        if nominations:
+            last_nominated = nominations[-1]
+            if target == last_nominated:
+                alive_players = [p.player_number for p in self.game_state.get_alive_players()]
+                voters_set = set(votes.keys())
+                non_voters = [p for p in alive_players if p not in voters_set]
+                voters.extend(non_voters)
+        return voters
     
-    def handle_tie(self, tied_players: List[int], agents: dict[int, BaseAgent]) -> Optional[int]:
+    def handle_tie(self, tied_players: List[int], agents: dict[int, BaseAgent]) -> Optional[List[int]]:
         """
         Handle tie-breaking procedure.
-        Returns eliminated player(s) or None if all remain.
+        Returns eliminated players or None if all remain.
         """
         self.tie_break_round += 1
+        self.last_tie_break_voters = []
         
         # Emit tie event
         if self.event_emitter:
@@ -218,10 +235,10 @@ class VotingHandler:
         
         return None
     
-    async def _vote_eliminate_all_async(self, tied_players: List[int], agents: dict[int, BaseAgent]) -> Optional[int]:
+    async def _vote_eliminate_all_async(self, tied_players: List[int], agents: dict[int, BaseAgent]) -> Optional[List[int]]:
         """
         Vote to eliminate all tied players or keep all (async version).
-        Returns list of eliminated players or None.
+        Returns eliminated players or None.
         """
         self.judge.announce(f"Same tie persists. Vote: Who is in favour of all nominated players ({tied_players}) leaving the game?")
         
@@ -261,6 +278,7 @@ class VotingHandler:
         # Wait for all votes in parallel
         votes_for_elimination = 0
         votes_against = 0
+        voters_for_elimination: List[int] = []
         
         if tasks:
             results = await asyncio.gather(*tasks)
@@ -269,6 +287,7 @@ class VotingHandler:
                 # If agent votes for any tied player, count as "eliminate all"
                 if vote in tied_players:
                     votes_for_elimination += 1
+                    voters_for_elimination.append(player_num)
                 else:
                     votes_against += 1
         
@@ -278,8 +297,8 @@ class VotingHandler:
         if votes_for_elimination > majority:
             # All tied players eliminated
             self.judge.announce(f"Majority votes to eliminate all. Players {tied_players} are eliminated.")
-            # Return first player (all will be eliminated)
-            return tied_players[0]
+            self.last_tie_break_voters = voters_for_elimination
+            return tied_players
         elif votes_for_elimination == votes_against:
             # Split vote - all remain
             self.judge.announce("Vote splits evenly. All tied players remain in the game.")
@@ -289,10 +308,10 @@ class VotingHandler:
             self.judge.announce("Majority votes to keep all. All tied players remain in the game.")
             return None
     
-    def _vote_eliminate_all(self, tied_players: List[int], agents: dict[int, BaseAgent]) -> Optional[int]:
+    def _vote_eliminate_all(self, tied_players: List[int], agents: dict[int, BaseAgent]) -> Optional[List[int]]:
         """
         Vote to eliminate all tied players or keep all (synchronous wrapper).
-        Returns list of eliminated players or None.
+        Returns eliminated players or None.
         """
         return asyncio.run(self._vote_eliminate_all_async(tied_players, agents))
     
@@ -303,15 +322,12 @@ class VotingHandler:
         target = self.process_voting(agents)
         
         if target:
-            # Get voters who voted for this target
-            day = self.game_state.day_number
-            votes = self.game_state.votes.get(day, {})
-            voters = [voter for voter, voted_target in votes.items() if voted_target == target]
+            voters = self._get_voters_for_target(target)
             
             self.game_state.eliminate_player(
                 target, 
                 "voting",
-                day_number=day,
+                day_number=self.game_state.day_number,
                 voters=voters
             )
             player = self.game_state.get_player(target)
@@ -339,39 +355,32 @@ class VotingHandler:
                             }
                         except:
                             pass
-                    self.event_emitter.emit_speech(target, final_speech, day, context_data)
+                    self.event_emitter.emit_speech(target, final_speech, self.game_state.day_number, context_data)
         else:
             # Tie - handle tie-breaking
             tied_players = self.judge.get_tied_players()
             if tied_players:
                 result = self.handle_tie(tied_players, agents)
                 if result:
-                    # Get voters who voted for this target
-                    day = self.game_state.day_number
-                    votes = self.game_state.votes.get(day, {})
-                    voters = [voter for voter, voted_target in votes.items() if voted_target == result]
+                    eliminated_players = result
+                    voters = self.last_tie_break_voters
+                    if len(eliminated_players) == 1:
+                        voters = self._get_voters_for_target(eliminated_players[0])
                     
-                    # Eliminate the result (could be one or all)
-                    if result in tied_players:
-                        # Single elimination
+                    for eliminated_player in eliminated_players:
                         self.game_state.eliminate_player(
-                            result, 
+                            eliminated_player, 
                             "tie-break vote",
-                            day_number=day,
+                            day_number=self.game_state.day_number,
                             voters=voters
                         )
-                        player = self.game_state.get_player(result)
-                        if player and result in agents:
-                            self.judge.announce(f"Player {result} has been eliminated. This is your final speech.")
-                            # Collect final speech from eliminated player
-                            agent = agents[result]
+                        player = self.game_state.get_player(eliminated_player)
+                        if player and eliminated_player in agents:
+                            self.judge.announce(f"Player {eliminated_player} has been eliminated. This is your final speech.")
+                            agent = agents[eliminated_player]
                             context = agent.build_context(self.game_state)
                             final_speech = agent.get_final_speech(context)
-                            
-                            # Add to player history
                             player.add_speech(final_speech)
-                            
-                            # Emit final speech event
                             if self.event_emitter:
                                 context_data = None
                                 if isinstance(agent, SimpleLLMAgent):
@@ -384,6 +393,4 @@ class VotingHandler:
                                         }
                                     except:
                                         pass
-                                self.event_emitter.emit_speech(result, final_speech, day, context_data)
-                    # If all eliminated, would need to handle multiple
-
+                                self.event_emitter.emit_speech(eliminated_player, final_speech, self.game_state.day_number, context_data)

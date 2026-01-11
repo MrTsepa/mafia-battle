@@ -9,6 +9,7 @@
 ## Code testing
 - If making substaintial changes to code remember to rerun tests (`pytest tests/ -v`) to make sure everything works
 - Update tests if needed
+- Occasionally run `git fetch` to confirm the local repo is up to date
 
 ## Code Style
 
@@ -85,4 +86,3 @@ python main.py -c configs/mixed_agents.yaml -m gpt-5-nano -s 12345
 - If no seed is provided, a random seed will be generated and displayed in the game summary
 - The seed affects role assignment, dummy agent behavior, and other random game elements
 - Use the same seed to reproduce the exact same game setup and behavior
-

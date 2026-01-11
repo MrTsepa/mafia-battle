@@ -96,3 +96,66 @@ def test_tie_breaking(mock_speech, mock_vote_async, game_state, judge, game_conf
     # Should have some result (either elimination or keep all)
     assert result is not None or len(tied) == 0
 
+
+@patch.object(SimpleLLMAgent, 'get_vote_choice_async')
+@patch.object(SimpleLLMAgent, 'get_day_speech')
+def test_eliminate_all_on_persistent_tie(mock_speech, mock_vote_async, game_state, judge, game_config, mock_agents):
+    """Test eliminating all tied players after persistent tie."""
+    handler = VotingHandler(game_state, judge)
+    game_state.start_day()
+    game_state.day_number = 2
+    
+    judge.process_nomination(1, "I nominate player number 5")
+    judge.process_nomination(2, "I nominate player number 7")
+    game_state.start_voting()
+    
+    alive_numbers = [p.player_number for p in game_state.get_alive_players()]
+    alive_count = len(alive_numbers)
+    mid = alive_count // 2
+    call_index = 0
+    
+    async def vote_side_effect(context):
+        nonlocal call_index
+        round_index = call_index // alive_count
+        call_index += 1
+        voter_num = context.player.player_number
+        voter_index = alive_numbers.index(voter_num)
+        if round_index < 2:
+            return 5 if voter_index < mid else 7
+        return 5
+    
+    mock_vote_async.side_effect = vote_side_effect
+    mock_speech.return_value = "Tie-break speech. PASS"
+    
+    handler.run_voting_phase(mock_agents)
+    
+    assert game_state.get_player(5).status.value == "eliminated"
+    assert game_state.get_player(7).status.value == "eliminated"
+
+
+@patch.object(SimpleLLMAgent, 'get_vote_choice_async')
+def test_non_voters_included_in_elimination_voters(mock_vote_async, game_state, judge, game_config, mock_agents):
+    """Test non-voters are included in elimination voter list."""
+    handler = VotingHandler(game_state, judge)
+    game_state.start_day()
+    game_state.day_number = 2
+    
+    judge.process_nomination(1, "I nominate player number 5")
+    judge.process_nomination(2, "I nominate player number 7")
+    game_state.start_voting()
+    
+    async def vote_async(context):
+        return 7
+    mock_vote_async.side_effect = vote_async
+    
+    limited_agents = {k: v for k, v in mock_agents.items() if k not in {8, 9}}
+    handler.run_voting_phase(limited_agents)
+    
+    elimination_actions = [
+        action for action in game_state.action_log
+        if action["type"] == "player_eliminated" and action["data"].get("day_number") == game_state.day_number
+    ]
+    assert elimination_actions
+    voters = elimination_actions[-1]["data"]["voters"]
+    assert 8 in voters
+    assert 9 in voters

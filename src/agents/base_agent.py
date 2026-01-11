@@ -195,32 +195,7 @@ class BaseAgent(ABC):
                     player_speech_counts[player_num][elim_day] = 0
                 player_speech_counts[player_num][elim_day] += 1
         
-        # Second pass: match speeches to days based on nominations
-        # If a player nominated on day X, their first speech is likely from that day
-        for speech_data in all_speeches:
-            if speech_data.get("day") is not None:
-                continue  # Already assigned (final speech)
-            
-            player_num = speech_data["player"]
-            day_for_speech = None
-            
-            # Check if this player nominated on any day
-            for day in sorted(game_state.nominations.keys()):
-                if player_num in game_state.nominations[day]:
-                    # Count how many speeches this player has made so far (before this one)
-                    player_speech_index = sum(1 for s in all_speeches[:all_speeches.index(speech_data)] if s["player"] == player_num)
-                    # If this is their first speech, it's likely from the day they nominated
-                    if player_speech_index == 0:
-                        day_for_speech = day
-                        break
-            
-            speech_data["day"] = day_for_speech
-            if day_for_speech:
-                if day_for_speech not in player_speech_counts[player_num]:
-                    player_speech_counts[player_num][day_for_speech] = 0
-                player_speech_counts[player_num][day_for_speech] += 1
-        
-        # Third pass: assign remaining speeches to days in order
+        # Second pass: assign remaining speeches to days in order
         # Distribute speeches evenly across days, ensuring each player has at most one speech per day
         speeches_per_day = {}
         all_days = sorted(set(game_state.nominations.keys()) | {game_state.day_number})
@@ -338,4 +313,3 @@ class BaseAgent(ABC):
                 actions.append("sheriff_check")
         
         return actions
-
