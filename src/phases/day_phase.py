@@ -71,6 +71,10 @@ class DayPhaseHandler:
         
         speech = agent.get_day_speech(context)
         
+        # Add reasoning to context_data if available (after LLM call)
+        if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+            context_data["reasoning"] = agent.last_reasoning
+        
         # Validate speech ending
         if not self.judge.validate_speech_ending(speech):
             speech += " PASS"  # Auto-add if missing

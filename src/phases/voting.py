@@ -64,6 +64,10 @@ class VotingHandler:
             else:
                 vote_choice = agent.get_vote_choice(context)
             
+            # Add reasoning to context_data if available (after LLM call)
+            if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+                context_data["reasoning"] = agent.last_reasoning
+            
             return player_num, vote_choice, context_data
         
         # Create tasks for all players
@@ -221,7 +225,7 @@ class VotingHandler:
         target = self.process_voting(agents)
         
         if target:
-            return target
+            return [target]
         
         # Still a tie - check if same players or fewer
         new_tied = self.judge.get_tied_players()
@@ -265,6 +269,10 @@ class VotingHandler:
                 vote = await agent.get_vote_choice_async(context)
             else:
                 vote = agent.get_vote_choice(context)
+            
+            # Add reasoning to context_data if available (after LLM call)
+            if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+                context_data["reasoning"] = agent.last_reasoning
             
             return player_num, vote, context_data
         
@@ -355,7 +363,12 @@ class VotingHandler:
                             }
                         except:
                             pass
-                    self.event_emitter.emit_speech(target, final_speech, self.game_state.day_number, context_data)
+                        
+                        # Add reasoning to context_data if available (after LLM call)
+                        if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+                            context_data["reasoning"] = agent.last_reasoning
+                        
+                        self.event_emitter.emit_speech(target, final_speech, self.game_state.day_number, context_data)
         else:
             # Tie - handle tie-breaking
             tied_players = self.judge.get_tied_players()
@@ -393,4 +406,9 @@ class VotingHandler:
                                         }
                                     except:
                                         pass
+                                
+                                # Add reasoning to context_data if available (after LLM call)
+                                if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+                                    context_data["reasoning"] = agent.last_reasoning
+                                
                                 self.event_emitter.emit_speech(eliminated_player, final_speech, self.game_state.day_number, context_data)

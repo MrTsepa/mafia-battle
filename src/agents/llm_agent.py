@@ -68,6 +68,9 @@ class SimpleLLMAgent(BaseAgent):
         
         # Track strategic information
         self.checked_players: set[int] = set()  # For sheriff/don
+        
+        # Store last reasoning from LLM calls (for event emission)
+        self.last_reasoning: Optional[str] = None
     
     def _build_api_params(self, prompt: str, max_tokens: Optional[int], temperature: Optional[float]) -> Dict[str, Any]:
         """
@@ -116,6 +119,7 @@ class SimpleLLMAgent(BaseAgent):
     def _process_llm_response(self, response: Any, max_tokens: Optional[int], latency_ms: float) -> str:
         """
         Process LLM API response and extract content.
+        Also extracts reasoning if available and stores it in self.last_reasoning.
         
         Args:
             response: OpenAI API response object
@@ -128,10 +132,53 @@ class SimpleLLMAgent(BaseAgent):
         Raises:
             LLMEmptyResponseError: If response is empty or invalid
         """
-        content = response.choices[0].message.content
+        message = response.choices[0].message
+        content = message.content
         if content is None:
             content = ""
         content = content.strip()
+        
+        # Extract reasoning if available (for reasoning models like gpt-5)
+        # Try multiple possible locations for reasoning content
+        reasoning = None
+        try:
+            # Check message.reasoning_content (most common for gpt-5 models)
+            if hasattr(message, 'reasoning_content') and message.reasoning_content:
+                reasoning = message.reasoning_content
+            # Check message.reasoning (alternative structure)
+            elif hasattr(message, 'reasoning') and message.reasoning:
+                if isinstance(message.reasoning, str):
+                    reasoning = message.reasoning
+                elif hasattr(message.reasoning, 'content'):
+                    reasoning = message.reasoning.content
+                elif isinstance(message.reasoning, list) and len(message.reasoning) > 0:
+                    # Handle list of reasoning items
+                    first_item = message.reasoning[0]
+                    if isinstance(first_item, str):
+                        reasoning = first_item
+                    elif hasattr(first_item, 'text'):
+                        reasoning = first_item.text
+                    elif hasattr(first_item, 'content'):
+                        reasoning = first_item.content
+            # Check response-level reasoning
+            elif hasattr(response, 'reasoning') and response.reasoning:
+                if isinstance(response.reasoning, str):
+                    reasoning = response.reasoning
+                elif hasattr(response.reasoning, 'content'):
+                    reasoning = response.reasoning.content
+        except Exception:
+            # If any error occurs during reasoning extraction, just continue without it
+            pass
+        
+        # Store reasoning for later use in context_data
+        if reasoning:
+            if isinstance(reasoning, str):
+                self.last_reasoning = reasoning.strip()
+            else:
+                # Try to convert to string
+                self.last_reasoning = str(reasoning).strip()
+        else:
+            self.last_reasoning = None
         
         # Emit metadata
         if self.event_emitter and response.usage:
@@ -596,6 +643,7 @@ class SimpleLLMAgent(BaseAgent):
             "- Roles are NOT revealed when players are eliminated",
             "- Games typically end in 2-4 rounds, so early decisions are critical",
             "- Night kills account for ~50% of eliminations - they are very powerful",
+            "- IMPORTANT: Once a nomination is made, it cannot be withdrawn",
             "",
         ]
         
@@ -615,10 +663,6 @@ class SimpleLLMAgent(BaseAgent):
                     "DON ABILITIES:",
                     "- Check one player per night to see if they are the Sheriff",
                     "- Make final decision on who mafia kills each night",
-                    "- Your check results:",
-                ])
-                prompt_parts.extend(self._format_check_results(self.player.don_checks, "don"))
-                prompt_parts.extend([
                     "",
                     "DON STRATEGY:",
                     "- Prioritize checking players who seem to be leading or coordinating",
@@ -630,10 +674,6 @@ class SimpleLLMAgent(BaseAgent):
             prompt_parts.extend([
                 "SHERIFF ABILITIES:",
                 "- Check one player per night to see if they are Red (civilian) or Black (mafia)",
-                "- Your check results:",
-            ])
-            prompt_parts.extend(self._format_check_results(self.player.sheriff_checks, "sheriff"))
-            prompt_parts.extend([
                 "",
                 "SHERIFF STRATEGY:",
                 "- Check suspicious players (those who voted for eliminated civilians)",
@@ -695,6 +735,15 @@ class SimpleLLMAgent(BaseAgent):
                 "",
             ])
         
+        # Add game history - comprehensive context for all actions in chronological order
+        chronological_events = self._format_chronological_events(context, include_current_day=True)
+        if chronological_events:
+            prompt_parts.append("GAME HISTORY (chronological order):")
+            for event_line in chronological_events:
+                prompt_parts.append(f"  {event_line}")
+            prompt_parts.append("")
+        
+        # Add alive players at the end
         prompt_parts.extend([
             "ALIVE PLAYERS:",
         ])
@@ -702,12 +751,15 @@ class SimpleLLMAgent(BaseAgent):
             prompt_parts.append(f"  Player {player.player_number}")
         prompt_parts.append("")
         
-        # Add game history - comprehensive context for all actions in chronological order
-        chronological_events = self._format_chronological_events(context, include_current_day=True)
-        if chronological_events:
-            prompt_parts.append("GAME HISTORY (chronological order):")
-            for event_line in chronological_events:
-                prompt_parts.append(f"  {event_line}")
+        # Add check results at the end
+        if self.player.role.role_type == RoleType.SHERIFF and self.player.sheriff_checks:
+            prompt_parts.append("YOUR CHECK RESULTS:")
+            prompt_parts.extend(self._format_check_results(self.player.sheriff_checks, "sheriff"))
+            prompt_parts.append("")
+        
+        if self.player.role.role_type == RoleType.DON and self.player.don_checks:
+            prompt_parts.append("YOUR CHECK RESULTS:")
+            prompt_parts.extend(self._format_check_results(self.player.don_checks, "don"))
             prompt_parts.append("")
         
         # Add phase-specific instructions
@@ -729,6 +781,7 @@ class SimpleLLMAgent(BaseAgent):
                 "YOUR TURN TO SPEAK:",
                 "- You have up to 200 words",
                 "- You can nominate a player by saying 'I nominate player number X'",
+                "- IMPORTANT: Once a nomination is made, it cannot be withdrawn - choose carefully",
                 "- End your speech with 'PASS' or 'THANK YOU'",
                 "- Analyze voting patterns and suspicious behavior",
                 "- If you're sheriff, be careful not to reveal your role",

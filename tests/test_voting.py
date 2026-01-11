@@ -159,3 +159,40 @@ def test_non_voters_included_in_elimination_voters(mock_vote_async, game_state, 
     voters = elimination_actions[-1]["data"]["voters"]
     assert 8 in voters
     assert 9 in voters
+
+
+@patch.object(SimpleLLMAgent, 'get_vote_choice_async')
+@patch.object(SimpleLLMAgent, 'get_day_speech')
+def test_tie_break_revote_single_elimination(mock_speech, mock_vote_async, game_state, judge, game_config, mock_agents):
+    """Test tie-break revote resolves to a single eliminated player."""
+    handler = VotingHandler(game_state, judge)
+    game_state.start_day()
+    game_state.day_number = 2
+    
+    judge.process_nomination(1, "I nominate player number 5")
+    judge.process_nomination(2, "I nominate player number 7")
+    game_state.start_voting()
+    
+    alive_numbers = [p.player_number for p in game_state.get_alive_players()]
+    alive_count = len(alive_numbers)
+    mid = alive_count // 2
+    call_index = 0
+    
+    async def vote_side_effect(context):
+        nonlocal call_index
+        round_index = call_index // alive_count
+        call_index += 1
+        voter_num = context.player.player_number
+        voter_index = alive_numbers.index(voter_num)
+        if round_index == 0:
+            return 5 if voter_index < mid else 7
+        return 5
+    
+    mock_vote_async.side_effect = vote_side_effect
+    mock_speech.return_value = "Tie-break speech. PASS"
+    
+    handler.collect_votes(mock_agents)
+    tied = judge.get_tied_players()
+    result = handler.handle_tie(tied, mock_agents)
+    
+    assert result == [5]

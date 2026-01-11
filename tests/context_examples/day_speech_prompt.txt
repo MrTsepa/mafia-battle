@@ -6,6 +6,7 @@ GAME RULES:
 - Roles are NOT revealed when players are eliminated
 - Games typically end in 2-4 rounds, so early decisions are critical
 - Night kills account for ~50% of eliminations - they are very powerful
+- IMPORTANT: Once a nomination is made, it cannot be withdrawn
 
 CURRENT PHASE: day
 DAY: 2, NIGHT: 1
@@ -17,16 +18,6 @@ GAME STRUCTURE - DAY 2:
 - It makes sense to start suspecting someone and form teams
 - Use check results, voting patterns from Day 1, and behavior to identify mafia
 - This is when real investigation begins
-
-ALIVE PLAYERS:
-  Player 1
-  Player 2
-  Player 5
-  Player 6
-  Player 7
-  Player 8
-  Player 9
-  Player 10
 
 GAME HISTORY (chronological order):
   [Day 1, Speech #1] Day 1 speech from Player 1: I think we should gather information first. No nomination yet. PASS
@@ -44,9 +35,20 @@ GAME HISTORY (chronological order):
   [Day 2] Player 5 was nominated
   [Night 1] Player 4 was killed
 
+ALIVE PLAYERS:
+  Player 1
+  Player 2
+  Player 5
+  Player 6
+  Player 7
+  Player 8
+  Player 9
+  Player 10
+
 YOUR TURN TO SPEAK:
 - You have up to 200 words
 - You can nominate a player by saying 'I nominate player number X'
+- IMPORTANT: Once a nomination is made, it cannot be withdrawn - choose carefully
 - End your speech with 'PASS' or 'THANK YOU'
 - Analyze voting patterns and suspicious behavior
 - If you're sheriff, be careful not to reveal your role

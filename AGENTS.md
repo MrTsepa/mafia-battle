@@ -46,7 +46,7 @@
 
 ## Running Games in Terminal
 
-When running games in the terminal, **always use the lightweight model `gpt-5-nano`** to reduce API costs and improve response times:
+When running games in the terminal, **always use the lightweight model `gpt-5-nano`** to reduce API costs and improve response times, unless the user explicitly requests a higher-tier model:
 
 ```bash
 # Always specify gpt-5-nano when running in terminal
@@ -57,8 +57,8 @@ python main.py -c configs/simple_llm_agent.yaml -m gpt-5-nano
 ```
 
 **Important:**
-- Use `gpt-5-nano` for terminal/interactive runs (faster, cheaper)
-- Use `gpt-5-mini` or other models only for specific testing/analysis
+- Use `gpt-5-nano` for terminal/interactive runs (faster, cheaper), unless the user explicitly asks for a higher-tier model
+- Use `gpt-5-mini` or other models only when explicitly requested by the user or for specific testing/analysis
 - The `--model` argument overrides the config file setting
 - This ensures consistent, cost-effective runs during development
 - don't use expressions like `2>&1 | head -100` it stops terminal output from beeing streamed to cursore console

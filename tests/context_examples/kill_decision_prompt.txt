@@ -6,6 +6,7 @@ GAME RULES:
 - Roles are NOT revealed when players are eliminated
 - Games typically end in 2-4 rounds, so early decisions are critical
 - Night kills account for ~50% of eliminations - they are very powerful
+- IMPORTANT: Once a nomination is made, it cannot be withdrawn
 
 MAFIA TEAM: You know these players are mafia: [1, 4, 7]
 STRATEGY:
@@ -16,8 +17,6 @@ STRATEGY:
 DON ABILITIES:
 - Check one player per night to see if they are the Sheriff
 - Make final decision on who mafia kills each night
-- Your check results:
-  Night 1: Player 6 is Not the Sheriff
 
 DON STRATEGY:
 - Prioritize checking players who seem to be leading or coordinating
@@ -33,15 +32,6 @@ GAME STRUCTURE - DAY 2:
 - It makes sense to start suspecting someone and form teams
 - Use check results, voting patterns from Day 1, and behavior to identify mafia
 - This is when real investigation begins
-
-ALIVE PLAYERS:
-  Player 2
-  Player 5
-  Player 6
-  Player 7
-  Player 8
-  Player 9
-  Player 10
 
 GAME HISTORY (chronological order):
   [Day 1, Speech #1] Day 1 speech from Player 1: I think we should gather information first. No nomination yet. PASS
@@ -59,6 +49,18 @@ GAME HISTORY (chronological order):
   [Day 2] → Player 1 was eliminated (voting)
   [Day 2, Final Speech] Day 2 speech from Player 1: Based on yesterday's events, I think we need to investigate further. PASS
   [Night 1] Player 4 was killed
+
+ALIVE PLAYERS:
+  Player 2
+  Player 5
+  Player 6
+  Player 7
+  Player 8
+  Player 9
+  Player 10
+
+YOUR CHECK RESULTS:
+  Night 1: Player 6 is Not the Sheriff
 
 KILL DECISION:
 - Team claims:

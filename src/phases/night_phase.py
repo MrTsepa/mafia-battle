@@ -52,6 +52,10 @@ class NightPhaseHandler:
                 
                 action = agent.get_night_action(context)
                 
+                # Add reasoning to context_data if available (after LLM call)
+                if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+                    context_data["reasoning"] = agent.last_reasoning
+                
                 if action.get("type") == "kill_claim":
                     target = action.get("target")
                     if target and self._is_valid_target(target):
@@ -108,6 +112,10 @@ class NightPhaseHandler:
                 pass
         
         action = decision_agent.get_night_action(context)
+        
+        # Add reasoning to context_data if available (after LLM call)
+        if context_data and hasattr(decision_agent, 'last_reasoning') and decision_agent.last_reasoning:
+            context_data["reasoning"] = decision_agent.last_reasoning
         
         if action.get("type") == "kill_decision" or "kill_decision" in action:
             target = action.get("kill_decision") or action.get("target")
@@ -170,6 +178,10 @@ class NightPhaseHandler:
         
         action = agent.get_night_action(context)
         
+        # Add reasoning to context_data if available (after LLM call)
+        if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+            context_data["reasoning"] = agent.last_reasoning
+        
         if action.get("type") == "don_check":
             target = action.get("target")
             
@@ -226,6 +238,10 @@ class NightPhaseHandler:
                 pass
         
         action = agent.get_night_action(context)
+        
+        # Add reasoning to context_data if available (after LLM call)
+        if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+            context_data["reasoning"] = agent.last_reasoning
         
         if action.get("type") == "sheriff_check":
             target = action.get("target")
@@ -336,6 +352,11 @@ class NightPhaseHandler:
                             }
                         except:
                             pass
+                    
+                    # Add reasoning to context_data if available (after LLM call)
+                    if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+                        context_data["reasoning"] = agent.last_reasoning
+                    
                     self.event_emitter.emit_speech(killed, final_speech, self.game_state.day_number, context_data)
         
         # Check win condition after kill - if game ended, skip remaining night actions
