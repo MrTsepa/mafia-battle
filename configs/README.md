@@ -58,6 +58,7 @@ All configuration files support the following options:
 ### LLM Settings
 - `llm_model`: LLM model name (default: "gpt-4")
 - `llm_temperature`: LLM temperature (default: 0.7)
+- `reasoning_effort`: Optional reasoning effort for gpt-5 models (`"low"`, `"medium"`, `"high"`)
 - `max_retries`: Maximum retries for LLM calls (default: 3)
 - `max_action_tokens`: Optional token cap for night actions and voting (default: unlimited)
 
@@ -74,4 +75,3 @@ cp configs/dummy_agent.yaml configs/my_custom_config.yaml
 # Edit my_custom_config.yaml with your preferred settings
 python main.py --config configs/my_custom_config.yaml
 ```
-

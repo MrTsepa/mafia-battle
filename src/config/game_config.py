@@ -21,6 +21,7 @@ class GameConfig:
     # LLM settings
     llm_model: str = "gpt-4"
     llm_temperature: float = 0.7
+    reasoning_effort: Optional[str] = None  # For reasoning-capable models: "low", "medium", or "high"
     max_retries: int = 3
     max_action_tokens: Optional[int] = None  # Unlimited tokens for night actions and voting
     
@@ -40,4 +41,3 @@ class GameConfig:
 
 # Default configuration instance
 default_config = GameConfig()
-

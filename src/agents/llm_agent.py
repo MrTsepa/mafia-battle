@@ -87,8 +87,14 @@ class SimpleLLMAgent(BaseAgent):
                 {"role": "system", "content": SYSTEM_MESSAGE},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": temperature or self.temperature
         }
+        
+        selected_temperature = temperature if temperature is not None else self.temperature
+        if selected_temperature is not None:
+            api_params["temperature"] = selected_temperature
+        
+        if self.config.reasoning_effort and "gpt-5" in self.model:
+            api_params["reasoning_effort"] = self.config.reasoning_effort
         
         if max_tokens is not None:
             # Use max_completion_tokens for newer models, max_tokens for older ones
@@ -101,6 +107,9 @@ class SimpleLLMAgent(BaseAgent):
                 api_params["max_completion_tokens"] = max_tokens
             else:
                 api_params["max_tokens"] = max_tokens
+        
+        if "gpt-5" in self.model and "temperature" in api_params:
+            del api_params["temperature"]
         
         return api_params
     
