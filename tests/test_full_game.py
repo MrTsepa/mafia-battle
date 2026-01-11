@@ -13,9 +13,9 @@ from src.config.game_config import GameConfig
 @patch.object(SimpleLLMAgent, 'get_day_speech')
 @patch.object(SimpleLLMAgent, 'get_night_action')
 @patch.object(SimpleLLMAgent, 'get_vote_choice_async')
-def test_full_game_flow(mock_vote_async, mock_night, mock_speech, game_config):
+def test_full_game_flow(mock_vote_async, mock_night, mock_speech, game_config, no_record_event_emitter):
     """Test a complete game flow."""
-    game = MafiaGame(game_config)
+    game = MafiaGame(game_config, event_emitter=no_record_event_emitter)
     
     # Track Don calls per night to distinguish kill decision vs don check
     don_calls = {}  # {night_number: {player_number: call_count}}
@@ -103,9 +103,9 @@ def test_full_game_flow(mock_vote_async, mock_night, mock_speech, game_config):
 @patch.object(SimpleLLMAgent, 'get_day_speech')
 @patch.object(SimpleLLMAgent, 'get_night_action')
 @patch.object(SimpleLLMAgent, 'get_vote_choice')
-def test_mafia_win_scenario(mock_vote, mock_night, mock_speech, game_config):
+def test_mafia_win_scenario(mock_vote, mock_night, mock_speech, game_config, no_record_event_emitter):
     """Test a scenario where mafia wins."""
-    game = MafiaGame(game_config)
+    game = MafiaGame(game_config, event_emitter=no_record_event_emitter)
     
     # Strategy: Mafia kills civilians, civilians vote randomly
     def night_side_effect(context):

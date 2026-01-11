@@ -12,6 +12,7 @@ from src.core import (
 )
 from src.agents import SimpleLLMAgent, AgentContext
 from src.config.game_config import GameConfig
+from src.web import EventEmitter, RunRecorder
 
 
 @pytest.fixture(autouse=True)
@@ -100,4 +101,22 @@ def create_mock_agent_response(response_text: str):
     mock_response.choices = [MagicMock()]
     mock_response.choices[0].message.content = response_text
     return mock_response
+
+
+@pytest.fixture
+def no_record_event_emitter():
+    """
+    EventEmitter that doesn't save runs to disk (for tests).
+    
+    This prevents test runs from appearing in the game viewer.
+    """
+    # Create a mock RunRecorder that doesn't actually save files
+    mock_recorder = Mock(spec=RunRecorder)
+    mock_recorder.create_run = Mock(return_value="test_run")
+    mock_recorder.record_event = Mock()
+    mock_recorder.save_metadata = Mock()
+    mock_recorder.get_run_path = Mock(return_value=None)
+    mock_recorder.list_runs = Mock(return_value=[])
+    
+    return EventEmitter(run_recorder=mock_recorder)
 
