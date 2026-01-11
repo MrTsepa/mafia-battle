@@ -173,8 +173,8 @@ class EventEmitter:
     
     def emit_llm_metadata(self, player_number: int, action_type: str, prompt_tokens: int, 
                          completion_tokens: int, total_tokens: int, latency_ms: float, 
-                         model: str) -> None:
-        """Emit LLM API call metadata (tokens, latency)."""
+                         model: str, reasoning_tokens: int = 0, reasoning_effort: Optional[str] = None) -> None:
+        """Emit LLM API call metadata (tokens, latency, reasoning effort)."""
         self._emit("llm_metadata", {
             "player_number": player_number,
             "action_type": action_type,
@@ -182,6 +182,8 @@ class EventEmitter:
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
             "latency_ms": latency_ms,
-            "model": model
+            "model": model,
+            "reasoning_tokens": reasoning_tokens,
+            "reasoning_effort": reasoning_effort
         })
 

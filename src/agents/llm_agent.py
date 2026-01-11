@@ -17,6 +17,7 @@ except ImportError:
 
 from .base_agent import BaseAgent, AgentContext
 from .exceptions import LLMEmptyResponseError
+from .xml_formatter import format_game_history_xml
 from ..core import Player, GamePhase, RoleType
 from ..config.game_config import GameConfig, default_config
 
@@ -94,40 +95,46 @@ class SimpleLLMAgent(BaseAgent):
         # Map reasoning_effort from config to reasoning parameters
         # reasoning_effort: "low" -> effort="low", summary="concise"
         #                  "medium" -> effort="medium", summary="auto"  
-        #                  "high" -> effort="high", summary="auto"
-        # Note: summary should typically be "auto" to get actual reasoning text
+        #                  "high" -> effort="high", summary="detailed"
+        # Note: For gpt-5.2, try "detailed" for high effort to get reasoning text
         reasoning_effort_value = "medium"  # Default effort
-        reasoning_summary = "auto"  # Always use "auto" for summary to get reasoning text
+        reasoning_summary = "auto"  # Default to "auto" for summary
         
         if self.reasoning_effort:
             effort_lower = self.reasoning_effort.lower()
             if effort_lower == "low":
                 reasoning_effort_value = "low"
-                reasoning_summary = "auto"  # Use "auto" to get reasoning text
+                reasoning_summary = "concise"  # Use "concise" for low effort
             elif effort_lower == "medium":
                 reasoning_effort_value = "medium"
                 reasoning_summary = "auto"
             elif effort_lower == "high":
                 reasoning_effort_value = "high"
-                reasoning_summary = "auto"  # Use "auto" even for high effort
+                # For high effort, try "detailed" - this might be needed for gpt-5.2 to return reasoning
+                reasoning_summary = "detailed"
         
+        # Use Responses API (gpt-5.2-pro requires Responses API, not Chat Completions)
+        # We'll request JSON in the prompt and parse it manually
         api_params: Dict[str, Any] = {
             "model": self.model,
             "input": [
                 {"role": "system", "content": SYSTEM_MESSAGE},
                 {"role": "user", "content": prompt}
-            ],
-            "reasoning": {
+            ]
+        }
+        
+        # Add reasoning effort for gpt-5 models
+        if "gpt-5" in self.model:
+            api_params["reasoning"] = {
                 "effort": reasoning_effort_value,
                 "summary": reasoning_summary
             }
-        }
         
         selected_temperature = temperature if temperature is not None else self.temperature
         if selected_temperature is not None:
             api_params["temperature"] = selected_temperature
         
-        # Responses API uses max_output_tokens consistently for all models
+        # Responses API uses max_output_tokens
         if max_tokens is not None:
             api_params["max_output_tokens"] = max_tokens
         
@@ -139,7 +146,8 @@ class SimpleLLMAgent(BaseAgent):
     
     def _process_llm_response(self, response: Any, max_tokens: Optional[int], latency_ms: float) -> str:
         """
-        Process Responses API response and extract content and reasoning.
+        Process Responses API response and extract content and reasoning from structured JSON output.
+        The model is instructed to return JSON with "response" and "reasoning" fields.
         Stores reasoning in self.last_reasoning for later use.
         
         Args:
@@ -148,11 +156,14 @@ class SimpleLLMAgent(BaseAgent):
             latency_ms: Request latency in milliseconds
             
         Returns:
-            Extracted content string
+            Extracted content string (from structured output's "response" field)
             
         Raises:
             LLMEmptyResponseError: If response is empty or invalid
         """
+        import json
+        import re
+        
         # Responses API structure: response.output[0] contains the output item
         if not hasattr(response, 'output') or not response.output or len(response.output) == 0:
             raise LLMEmptyResponseError(
@@ -163,28 +174,65 @@ class SimpleLLMAgent(BaseAgent):
         
         output_item = response.output[0]
         
-        # Extract content from output item
-        # Responses API: content can be in output_item.content or we need to check the actual structure
+        # Extract structured output (JSON) from content
+        structured_output = None
         content = None
+        reasoning = None
         
-        # Try output_item.content first (most common)
+        # Try to get structured output from output_item.content
+        raw_content = None
         if hasattr(output_item, 'content') and output_item.content is not None:
             if isinstance(output_item.content, str):
-                content = output_item.content
+                raw_content = output_item.content
             elif hasattr(output_item.content, '__str__'):
-                content = str(output_item.content)
+                raw_content = str(output_item.content)
         
         # Check if there's a text attribute on the output_item
-        if (not content or content.strip() == "") and hasattr(output_item, 'text') and output_item.text:
+        if not raw_content and hasattr(output_item, 'text') and output_item.text:
             if isinstance(output_item.text, str):
-                content = output_item.text
+                raw_content = output_item.text
         
-        # Check response-level text fields
+        # Try to extract JSON from the raw content
+        if raw_content:
+            # First, try to parse the entire content as JSON
+            try:
+                structured_output = json.loads(raw_content)
+            except json.JSONDecodeError:
+                # If that fails, try to extract JSON from markdown code blocks or find JSON object
+                # Look for JSON object pattern: { ... }
+                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw_content, re.DOTALL)
+                if json_match:
+                    try:
+                        structured_output = json.loads(json_match.group(0))
+                    except json.JSONDecodeError:
+                        pass
+                
+                # If still no JSON, treat as plain text
+                if not structured_output:
+                    content = raw_content
+        
+        # Extract from structured output
+        if structured_output:
+            if isinstance(structured_output, dict):
+                content = structured_output.get("response", "")
+                reasoning = structured_output.get("reasoning", "")
+            else:
+                # If structured_output is not a dict, try to extract content
+                content = str(structured_output)
+        
+        # Fallback: check response-level text fields if we don't have content yet
         if (not content or content.strip() == "") and hasattr(response, 'output_text'):
             output_text = response.output_text
-            # output_text might be a config object, check if it has actual text
             if isinstance(output_text, str):
-                content = output_text
+                try:
+                    structured_output = json.loads(output_text)
+                    if isinstance(structured_output, dict):
+                        content = structured_output.get("response", "")
+                        reasoning = structured_output.get("reasoning", "")
+                    else:
+                        content = output_text
+                except json.JSONDecodeError:
+                    content = output_text
             elif hasattr(output_text, 'text'):
                 content = output_text.text
         
@@ -199,55 +247,8 @@ class SimpleLLMAgent(BaseAgent):
             content = ""
         content = content.strip()
         
-        # Extract reasoning summary from output item
-        # Structure: response.output[0].summary[0].text
-        reasoning = None
-        try:
-            # Check output_item.summary first (most common location)
-            if hasattr(output_item, 'summary') and output_item.summary:
-                summary_list = output_item.summary
-                if isinstance(summary_list, list) and len(summary_list) > 0:
-                    first_summary = summary_list[0]
-                    if hasattr(first_summary, 'text') and first_summary.text:
-                        reasoning = first_summary.text
-                    elif isinstance(first_summary, str) and first_summary.strip():
-                        reasoning = first_summary
-                    elif hasattr(first_summary, 'content') and first_summary.content:
-                        reasoning = first_summary.content
-                elif isinstance(summary_list, str) and summary_list.strip():
-                    # If summary is a string, use it directly (but check it's not just "detailed"/"auto"/"concise")
-                    if summary_list.lower() not in ["detailed", "auto", "concise"]:
-                        reasoning = summary_list
-                elif hasattr(summary_list, 'text') and summary_list.text:
-                    reasoning = summary_list.text
-            
-            # Also check response-level reasoning (some API versions)
-            if not reasoning and hasattr(response, 'reasoning') and response.reasoning:
-                if isinstance(response.reasoning, str) and response.reasoning.strip():
-                    # Don't use if it's just the summary level string
-                    if response.reasoning.lower() not in ["detailed", "auto", "concise"]:
-                        reasoning = response.reasoning
-                elif hasattr(response.reasoning, 'text') and response.reasoning.text:
-                    reasoning = response.reasoning.text
-                elif hasattr(response.reasoning, 'summary'):
-                    reasoning_obj = response.reasoning.summary
-                    if isinstance(reasoning_obj, list) and len(reasoning_obj) > 0:
-                        if hasattr(reasoning_obj[0], 'text'):
-                            reasoning = reasoning_obj[0].text
-                        elif isinstance(reasoning_obj[0], str):
-                            # Don't use if it's just the summary level string
-                            if reasoning_obj[0].lower() not in ["detailed", "auto", "concise"]:
-                                reasoning = reasoning_obj[0]
-                    elif isinstance(reasoning_obj, str):
-                        # Don't use if it's just the summary level string
-                        if reasoning_obj.lower() not in ["detailed", "auto", "concise"]:
-                            reasoning = reasoning_obj
-        except Exception as e:
-            # If any error occurs during reasoning extraction, just continue without it
-            # Don't log errors to avoid spam, but could add debug logging here if needed
-            pass
-        
-        # Store reasoning for later use in context_data
+        # Reasoning is extracted from structured output above
+        # Normalize and store reasoning for later use in context_data
         if reasoning:
             if isinstance(reasoning, str):
                 self.last_reasoning = reasoning.strip()
@@ -257,14 +258,21 @@ class SimpleLLMAgent(BaseAgent):
         else:
             self.last_reasoning = None
         
-        # Emit metadata (Responses API uses input_tokens/output_tokens instead of prompt_tokens/completion_tokens)
+        # Emit metadata (Responses API uses input_tokens/output_tokens)
         if self.event_emitter and hasattr(response, 'usage') and response.usage:
             usage = response.usage
             # Responses API uses input_tokens and output_tokens
-            # Fallback to prompt_tokens/completion_tokens for compatibility
             prompt_tokens = getattr(usage, 'input_tokens', None) or getattr(usage, 'prompt_tokens', 0) or 0
             completion_tokens = getattr(usage, 'output_tokens', None) or getattr(usage, 'completion_tokens', 0) or 0
             total_tokens = getattr(usage, 'total_tokens', 0) or 0
+            
+            # Extract reasoning tokens if available (for reasoning models like gpt-5.2)
+            reasoning_tokens = getattr(usage, 'reasoning_tokens', None) or 0
+            
+            # Get reasoning effort level that was used in the API call
+            reasoning_effort_used = None
+            if "gpt-5" in self.model and self.reasoning_effort:
+                reasoning_effort_used = self.reasoning_effort.lower()
             
             # If total_tokens is not available, try to calculate it
             if total_tokens == 0 and (prompt_tokens > 0 or completion_tokens > 0):
@@ -277,19 +285,9 @@ class SimpleLLMAgent(BaseAgent):
                 completion_tokens,
                 total_tokens,
                 latency_ms,
-                self.model
-            )
-        
-        # Empty response is a fatal error
-        if not content:
-            error_details = f"Model: {self.model}, Max tokens: {max_tokens}"
-            if hasattr(response, 'usage') and response.usage:
-                error_details += f", Usage: {response.usage}"
-            
-            raise LLMEmptyResponseError(
-                self.player.player_number,
-                "llm_api_call",
-                f"LLM API returned empty response for Player {self.player.player_number}. {error_details}"
+                self.model,
+                reasoning_tokens=reasoning_tokens,
+                reasoning_effort=reasoning_effort_used
             )
         
         return content
@@ -307,6 +305,7 @@ class SimpleLLMAgent(BaseAgent):
             
             # Track latency
             start_time = time.time()
+            # Use Responses API (required for gpt-5.2-pro)
             response = await self.async_client.responses.create(**api_params)
             latency_ms = (time.time() - start_time) * 1000
             
@@ -343,6 +342,7 @@ class SimpleLLMAgent(BaseAgent):
             
             # Track latency
             start_time = time.time()
+            # Use Responses API (required for gpt-5.2-pro)
             response = self.client.responses.create(**api_params)
             latency_ms = (time.time() - start_time) * 1000
             
@@ -491,6 +491,7 @@ class SimpleLLMAgent(BaseAgent):
             speech += " " + SPEECH_ENDINGS[0]
         return speech
     
+    
     def _format_chronological_events(self, context: AgentContext, include_current_day: bool = True) -> List[str]:
         """
         Format all game events (speeches, nominations, votes, eliminations, night kills) 
@@ -499,6 +500,8 @@ class SimpleLLMAgent(BaseAgent):
         Format: [Day X][Player Y][Timestamp] event text...
         
         Returns a list of formatted event strings.
+        
+        DEPRECATED: Use format_game_history_xml from xml_formatter module for structured XML format.
         """
         events = []
         current_day = context.game_state.day_number
@@ -823,12 +826,14 @@ class SimpleLLMAgent(BaseAgent):
                 "",
             ])
         
-        # Add game history - comprehensive context for all actions in chronological order
-        chronological_events = self._format_chronological_events(context, include_current_day=True)
-        if chronological_events:
-            prompt_parts.append("GAME HISTORY (chronological order):")
-            for event_line in chronological_events:
-                prompt_parts.append(f"  {event_line}")
+        # Add game history - structured XML format with publicly available information
+        game_history_xml = format_game_history_xml(context, include_current_day=True)
+        if game_history_xml.strip():
+            prompt_parts.append("GAME HISTORY (structured format):")
+            # Split XML into lines and indent each line
+            xml_lines = game_history_xml.strip().split('\n')
+            for line in xml_lines:
+                prompt_parts.append(line)
             prompt_parts.append("")
         
         # Add alive players at the end
@@ -954,6 +959,16 @@ class SimpleLLMAgent(BaseAgent):
                     "- Choose target to kill",
                     "- Return ONLY player number (e.g., '5')",
                 ])
+        
+        # Add JSON format instruction at the end of all prompts
+        prompt_parts.extend([
+            "",
+            "IMPORTANT: You must respond with valid JSON in the following format:",
+            '{"reasoning": "explanation of your decision", "response": "your actual response here"}',
+            "- The 'reasoning' field should contain an explanation of why you made this decision (target length: 50-150 words)",
+            "- The 'response' field should contain your actual answer (speech, player number, etc.)",
+            "- Both fields are required",
+        ])
         
         return "\n".join(prompt_parts)
     

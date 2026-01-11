@@ -27,9 +27,10 @@ All prompts include:
 2. **Night Actions Include Day Speeches** - Night actions (checks, kills) now include all day speeches, not just eliminations
 3. **Previous Night Kills** - Clear history of who was killed each night
 4. **Eliminations** - All eliminations with reasons and days
-5. **Vote Information** - Clear "who-voted-for-whom" format
+5. **Vote Information** - Clear "who-voted-for-whom" format in structured XML
 6. **Check Results** - Previous check results for Sheriff and Don
 7. **Role-Specific Information** - Mafia team knowledge, check results, etc.
+8. **Structured XML Format** - Game history is formatted as structured XML (max 120 chars per line) for better readability
 
 ## Context Structure
 
@@ -40,14 +41,13 @@ Each prompt follows this structure:
 3. **Role-Specific Info** - Abilities, check results, mafia team (if applicable)
 4. **Game State** - Current phase, day/night numbers, alive players
 5. **Game Structure** - Contextual guidance based on day number
-6. **Alive Players** - List with suspicious/trusted markers
-7. **Voting Patterns** - Analysis of suspicious players and coordinated votes
-8. **Day Speeches** - All speeches from current and previous days
-9. **Nominations** - Who was nominated each day
-10. **Votes** - Who voted for whom (clear format)
-11. **Eliminations** - All eliminations with reasons
-12. **Previous Night Kills** - History of night kills
-13. **Action-Specific Instructions** - What the LLM should do
+6. **Game History (Structured XML)** - All publicly available information in structured XML format:
+   - `<day>` elements containing speeches, nominations, votes, and eliminations
+   - `<night>` elements containing night kills
+   - All lines wrapped at 120 characters for readability
+7. **Alive Players** - List of alive players
+8. **Check Results** - Previous check results (for Sheriff/Don)
+9. **Action-Specific Instructions** - What the LLM should do
 
 ## Verification
 
@@ -55,9 +55,11 @@ The test verifies that:
 - ✅ All required sections are present
 - ✅ Day speeches are included in all contexts
 - ✅ Night actions include day speeches (not just eliminations)
-- ✅ Vote information is clearly formatted
+- ✅ Vote information is clearly formatted in XML structure
 - ✅ Check results are included
 - ✅ Night kills are shown
+- ✅ Game history is in structured XML format with proper tags
+- ✅ All XML lines are wrapped at 120 characters for readability
 
 ## Usage
 

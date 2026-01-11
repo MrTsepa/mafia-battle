@@ -126,12 +126,13 @@ def test_llm_context_examples():
         print(f"\nTotal prompt length: {len(prompt)} characters")
         
         # Verify key sections are present
-        assert "GAME HISTORY (chronological order)" in prompt, "Should include chronological history"
-        assert "[Day 2]" in prompt, "Should include current day events"
-        assert "[Day 1]" in prompt, "Should include previous day events"
-        assert "eliminated" in prompt, "Should include eliminations"
-        assert "[Night" in prompt, "Should include night kills"
-        assert "→ Player" in prompt, "Should include vote information"
+        assert "GAME HISTORY (structured format)" in prompt, "Should include structured XML history"
+        assert "<game_history>" in prompt, "Should include XML game history root"
+        assert "<day number=\"2\">" in prompt or "<day number='2'>" in prompt, "Should include current day events"
+        assert "<day number=\"1\">" in prompt or "<day number='1'>" in prompt, "Should include previous day events"
+        assert "<elimination" in prompt, "Should include eliminations"
+        assert "<night" in prompt, "Should include night kills"
+        assert "<vote" in prompt or "<votes" in prompt, "Should include vote information"
     
     # Test 2: Final Speech Context
     print("\n" + "="*80)
@@ -159,9 +160,10 @@ def test_llm_context_examples():
         
         # Verify key sections
         assert "FINAL SPEECH" in prompt, "Should include final speech instructions"
-        assert "GAME HISTORY (chronological order)" in prompt, "Should include chronological history"
-        assert "[Day 2]" in prompt, "Should include current day events"
-        assert "[Day 1]" in prompt, "Should include previous day events"
+        assert "GAME HISTORY (structured format)" in prompt, "Should include structured XML history"
+        assert "<game_history>" in prompt, "Should include XML game history root"
+        assert "<day number=\"2\">" in prompt or "<day number='2'>" in prompt, "Should include current day events"
+        assert "<day number=\"1\">" in prompt or "<day number='1'>" in prompt, "Should include previous day events"
     
     # Test 3: Sheriff Check Context (Night Action)
     print("\n" + "="*80)
@@ -189,10 +191,11 @@ def test_llm_context_examples():
         
         # Verify key sections for night actions
         assert "SHERIFF CHECK" in prompt, "Should include sheriff check instructions"
-        assert "GAME HISTORY (chronological order)" in prompt, "Night actions should include chronological history"
-        assert "[Day 2]" in prompt, "Night actions should include current day events"
-        assert "[Day 1]" in prompt, "Night actions should include previous day events"
-        assert "[Night" in prompt, "Should include night events"
+        assert "GAME HISTORY (structured format)" in prompt, "Night actions should include structured XML history"
+        assert "<game_history>" in prompt, "Should include XML game history root"
+        assert "<day number=\"2\">" in prompt or "<day number='2'>" in prompt, "Night actions should include current day events"
+        assert "<day number=\"1\">" in prompt or "<day number='1'>" in prompt, "Night actions should include previous day events"
+        assert "<night" in prompt, "Should include night events"
         assert "Night 1: Player 4 is Black" in prompt, "Should include previous check results"
     
     # Test 4: Don Check Context (Night Action)
@@ -218,9 +221,10 @@ def test_llm_context_examples():
         
         # Verify key sections
         assert "DON CHECK" in prompt, "Should include don check instructions"
-        assert "GAME HISTORY (chronological order)" in prompt, "Night actions should include chronological history"
-        assert "[Day 2]" in prompt, "Night actions should include current day events"
-        assert "[Day 1]" in prompt, "Night actions should include previous day events"
+        assert "GAME HISTORY (structured format)" in prompt, "Night actions should include structured XML history"
+        assert "<game_history>" in prompt, "Should include XML game history root"
+        assert "<day number=\"2\">" in prompt or "<day number='2'>" in prompt, "Night actions should include current day events"
+        assert "<day number=\"1\">" in prompt or "<day number='1'>" in prompt, "Night actions should include previous day events"
         assert "Night 1: Player 6 is Not the Sheriff" in prompt, "Should include previous check results"
     
     # Test 5: Kill Decision Context (Night Action)
@@ -253,10 +257,11 @@ def test_llm_context_examples():
         assert "KILL DECISION" in prompt, "Should include kill decision instructions"
         assert "Team claims:" in prompt, "Should include team kill claims"
         assert "P1 → P5" in prompt or "Player 1" in prompt, "Should show kill claims"
-        assert "GAME HISTORY (chronological order)" in prompt, "Night actions should include chronological history"
-        assert "[Day 2]" in prompt, "Night actions should include current day events"
-        assert "[Day 1]" in prompt, "Night actions should include previous day events"
-        assert "[Night" in prompt, "Should include night events"
+        assert "GAME HISTORY (structured format)" in prompt, "Night actions should include structured XML history"
+        assert "<game_history>" in prompt, "Should include XML game history root"
+        assert "<day number=\"2\">" in prompt or "<day number='2'>" in prompt, "Night actions should include current day events"
+        assert "<day number=\"1\">" in prompt or "<day number='1'>" in prompt, "Night actions should include previous day events"
+        assert "<night" in prompt, "Should include night events"
     
     # Test 6: Kill Claim Context (Night Action)
     print("\n" + "="*80)
@@ -278,9 +283,10 @@ def test_llm_context_examples():
         
         # Verify key sections
         assert "KILL CLAIM" in prompt, "Should include kill claim instructions"
-        assert "GAME HISTORY (chronological order)" in prompt, "Night actions should include chronological history"
-        assert "[Day 2]" in prompt, "Night actions should include current day events"
-        assert "[Day 1]" in prompt, "Night actions should include previous day events"
+        assert "GAME HISTORY (structured format)" in prompt, "Night actions should include structured XML history"
+        assert "<game_history>" in prompt, "Should include XML game history root"
+        assert "<day number=\"2\">" in prompt or "<day number='2'>" in prompt, "Night actions should include current day events"
+        assert "<day number=\"1\">" in prompt or "<day number='1'>" in prompt, "Night actions should include previous day events"
         assert "MAFIA TEAM" in prompt, "Should include mafia team information"
     
     # Save full prompts to files for review
@@ -309,8 +315,9 @@ def test_llm_context_examples():
     print("- Day speeches include all current and previous day speeches")
     print("- Night actions include all day speeches (not just eliminations)")
     print("- All actions include eliminations and night kills")
-    print("- Vote information is clearly formatted")
+    print("- Vote information is clearly formatted in XML structure")
     print("- Check results are included for Sheriff and Don")
+    print("- Game history is now in structured XML format (max 120 chars per line)")
     print(f"\nFull prompts saved to: {output_dir.absolute()}")
 
 

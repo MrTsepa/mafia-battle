@@ -99,3 +99,30 @@ python main.py -c configs/mixed_agents.yaml -m gpt-5-nano -s 12345
 - If no seed is provided, a random seed will be generated and displayed in the game summary
 - The seed affects role assignment, dummy agent behavior, and other random game elements
 - Use the same seed to reproduce the exact same game setup and behavior
+
+## Testing API Work with Real API Calls
+
+When testing API work and spinning up games with real API calls, **keep in mind that this can take up to 1 hour** for a full game run. 
+
+**Recommended approach for quick API testing:**
+- Use the Unix `timeout` command (or `gtimeout` if `timeout` is not available) to limit the game run time (e.g., 3 minutes)
+- After the timeout, check the saved logs in the `runs/` directory to verify API calls are working
+
+```bash
+# Run with 1-minute timeout, then check saved logs
+# Use 'timeout' if available, or 'gtimeout' if timeout is not available (e.g., on macOS)
+timeout 1m python main.py --config configs/simple_llm_agent.yaml --model gpt-5-nano
+# Or use gtimeout if timeout is not available:
+gtimeout 1m python main.py --config configs/simple_llm_agent.yaml --model gpt-5-nano
+
+# After timeout, check the latest run directory
+ls -lt runs/ | head -5
+# View events from the latest run
+cat runs/run_*/events.jsonl | tail -20
+```
+
+**Important:**
+- Full games with real API calls can take up to 1 hour to complete
+- Using `timeout` (or `gtimeout` if `timeout` is not available) allows you to test API connectivity and functionality without waiting for a full game
+- All game events are automatically saved to `runs/run_*/events.jsonl` even if the game is interrupted
+- Check the saved logs to verify API calls are being made correctly and responses are being processed

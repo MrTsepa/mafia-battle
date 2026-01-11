@@ -790,26 +790,59 @@
             const completionTokens = data.completion_tokens || 0;
             const totalTokens = data.total_tokens || 0;
             const latency = data.latency_ms ? parseFloat(data.latency_ms).toFixed(0) : 'N/A';
+            const reasoningTokens = data.reasoning_tokens || 0;
+            const reasoningEffort = data.reasoning_effort || null;
             
-            const metadataText = `[LLM] Player ${data.player_number} (${escapeHtml(data.action_type || 'llm_call')}): ` +
+            // Build metadata text with reasoning details if available
+            let metadataText = `[LLM] Player ${data.player_number} (${escapeHtml(data.action_type || 'llm_call')}): ` +
                 `Prompt: ${promptTokens.toLocaleString()}, ` +
                 `Completion: ${completionTokens.toLocaleString()}, ` +
                 `Total: ${totalTokens.toLocaleString()}, ` +
                 `Latency: ${latency}ms, ` +
                 `Model: ${escapeHtml(data.model || 'unknown')}`;
             
+            // Add reasoning details if available
+            if (reasoningTokens > 0 || reasoningEffort) {
+                const reasoningParts = [];
+                if (reasoningTokens > 0) {
+                    reasoningParts.push(`Reasoning: ${reasoningTokens.toLocaleString()}`);
+                }
+                if (reasoningEffort) {
+                    reasoningParts.push(`Effort: ${reasoningEffort}`);
+                }
+                if (reasoningParts.length > 0) {
+                    metadataText += `, ${reasoningParts.join(', ')}`;
+                }
+            }
+            
             const eventItem = document.createElement('div');
             eventItem.className = 'event-item event-llm-metadata';
             
             const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+            
+            // Build metadata details HTML
+            let metadataDetailsHtml = `
+                <div><strong>Prompt:</strong> ${promptTokens.toLocaleString()}</div>
+                <div><strong>Completion:</strong> ${completionTokens.toLocaleString()}</div>
+                <div><strong>Total:</strong> ${totalTokens.toLocaleString()}</div>
+                <div><strong>Latency:</strong> ${latency}ms</div>
+            `;
+            
+            // Add reasoning details if available
+            if (reasoningTokens > 0 || reasoningEffort) {
+                if (reasoningTokens > 0) {
+                    metadataDetailsHtml += `<div><strong>Reasoning:</strong> ${reasoningTokens.toLocaleString()}</div>`;
+                }
+                if (reasoningEffort) {
+                    metadataDetailsHtml += `<div><strong>Effort:</strong> ${reasoningEffort}</div>`;
+                }
+            }
+            
             eventItem.innerHTML = `
                 <div class="event-time">${timeStr}</div>
                 <div class="event-content">${metadataText}</div>
                 <div class="metadata-details">
-                    <div><strong>Prompt:</strong> ${promptTokens.toLocaleString()}</div>
-                    <div><strong>Completion:</strong> ${completionTokens.toLocaleString()}</div>
-                    <div><strong>Total:</strong> ${totalTokens.toLocaleString()}</div>
-                    <div><strong>Latency:</strong> ${latency}ms</div>
+                    ${metadataDetailsHtml}
                 </div>
             `;
             

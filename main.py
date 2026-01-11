@@ -116,10 +116,27 @@ class MafiaGame:
                     "sheriff": sheriff,
                     "agent_types": agent_types,
                     "config": {
+                        # LLM settings
                         "llm_model": self.config.llm_model,
+                        "llm_temperature": self.config.llm_temperature,
+                        "reasoning_effort": self.config.reasoning_effort,
+                        "max_retries": self.config.max_retries,
+                        # Agent settings
                         "agent_type": self.config.agent_type,
+                        "agent_types": self.config.agent_types,
+                        # Game settings
+                        "total_players": self.config.total_players,
                         "max_rounds": self.config.max_rounds,
-                        "random_seed": self.config.random_seed
+                        "random_seed": self.config.random_seed,
+                        "use_judge_announcements": self.config.use_judge_announcements,
+                        "log_level": self.config.log_level,
+                        # Token limits
+                        "max_speech_tokens": self.config.max_speech_tokens,
+                        "tie_break_speech_tokens": self.config.tie_break_speech_tokens,
+                        "max_action_tokens": self.config.max_action_tokens,
+                        # Time limits
+                        "night_action_timeout": self.config.night_action_timeout,
+                        "voting_window": self.config.voting_window
                     }
                 })
         
