@@ -95,11 +95,30 @@ def don_player(game_state) -> Player:
     return None
 
 
-def create_mock_agent_response(response_text: str):
-    """Helper to create a mock LLM response."""
+def create_mock_agent_response(response_text: str, reasoning_text: str = None):
+    """Helper to create a mock Responses API response."""
     mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = response_text
+    mock_output_item = MagicMock()
+    mock_output_item.text = response_text
+    mock_output_item.content = response_text  # Support both .text and .content
+    
+    # Set up reasoning summary structure
+    if reasoning_text:
+        mock_summary_item = MagicMock()
+        mock_summary_item.text = reasoning_text
+        mock_output_item.summary = [mock_summary_item]
+    else:
+        mock_output_item.summary = []
+    
+    mock_response.output = [mock_output_item]
+    
+    # Add usage stats
+    mock_usage = MagicMock()
+    mock_usage.prompt_tokens = 100
+    mock_usage.completion_tokens = 50
+    mock_usage.total_tokens = 150
+    mock_response.usage = mock_usage
+    
     return mock_response
 
 

@@ -31,7 +31,11 @@ NIGHT_EVENT_OFFSET = 1000  # Used to sort night events after day events
 
 class SimpleLLMAgent(BaseAgent):
     """
-    Strategic LLM agent implementation using OpenAI API.
+    Strategic LLM agent implementation using OpenAI Responses API.
+    
+    Uses the Responses API to enable reasoning summaries that provide insight into
+    the model's decision-making process. Reasoning summaries are extracted and displayed
+    in the web UI.
     
     Key improvements over random strategy:
     - Sheriff checks suspicious players strategically
@@ -45,12 +49,15 @@ class SimpleLLMAgent(BaseAgent):
         super().__init__(player, config)
         self.model = config.llm_model or "gpt-5-mini"
         self.temperature = config.llm_temperature
+        self.reasoning_effort = config.reasoning_effort
         self.event_emitter = event_emitter
         
         # Initialize OpenAI client if available
         if OpenAI is None:
             raise ImportError("OpenAI package not installed. Install with: uv sync")
         
+        # Note: OPENAI_API_KEY is loaded from .env file via dotenv (load_dotenv() is called in main.py)
+        # If accessing API keys in other modules, ensure load_dotenv() is called first
         api_key = os.getenv("OPENAI_API_KEY")
         # Allow initialization without API key in test environments (tests use mocking)
         if not api_key:
@@ -74,7 +81,7 @@ class SimpleLLMAgent(BaseAgent):
     
     def _build_api_params(self, prompt: str, max_tokens: Optional[int], temperature: Optional[float]) -> Dict[str, Any]:
         """
-        Build API parameters for OpenAI API calls.
+        Build API parameters for OpenAI Responses API calls.
 
         Args:
             prompt: The prompt to send
@@ -84,33 +91,36 @@ class SimpleLLMAgent(BaseAgent):
         Returns:
             Dictionary of API parameters
         """
+        # Map reasoning_effort from config to reasoning summary level
+        # reasoning_effort: "low" -> "concise", "medium" -> "auto", "high" -> "detailed"
+        reasoning_summary = "auto"  # Default
+        if self.reasoning_effort:
+            effort_lower = self.reasoning_effort.lower()
+            if effort_lower == "low":
+                reasoning_summary = "concise"
+            elif effort_lower == "medium":
+                reasoning_summary = "auto"
+            elif effort_lower == "high":
+                reasoning_summary = "detailed"
+        
         api_params: Dict[str, Any] = {
             "model": self.model,
-            "messages": [
+            "input": [
                 {"role": "system", "content": SYSTEM_MESSAGE},
                 {"role": "user", "content": prompt}
             ],
+            "reasoning": {"summary": reasoning_summary}  # Use reasoning_effort from config
         }
         
         selected_temperature = temperature if temperature is not None else self.temperature
         if selected_temperature is not None:
             api_params["temperature"] = selected_temperature
         
-        if self.config.reasoning_effort and "gpt-5" in self.model:
-            api_params["reasoning_effort"] = self.config.reasoning_effort
-        
+        # Responses API uses max_output_tokens consistently for all models
         if max_tokens is not None:
-            # Use max_completion_tokens for newer models, max_tokens for older ones
-            if "gpt-5" in self.model:
-                api_params["max_completion_tokens"] = max_tokens
-                # gpt-5-mini only supports default temperature (1), don't set custom temperature
-                if "temperature" in api_params:
-                    del api_params["temperature"]
-            elif "gpt-4o" in self.model:
-                api_params["max_completion_tokens"] = max_tokens
-            else:
-                api_params["max_tokens"] = max_tokens
+            api_params["max_output_tokens"] = max_tokens
         
+        # gpt-5 models only support default temperature (1), don't set custom temperature
         if "gpt-5" in self.model and "temperature" in api_params:
             del api_params["temperature"]
         
@@ -118,11 +128,11 @@ class SimpleLLMAgent(BaseAgent):
     
     def _process_llm_response(self, response: Any, max_tokens: Optional[int], latency_ms: float) -> str:
         """
-        Process LLM API response and extract content.
-        Also extracts reasoning if available and stores it in self.last_reasoning.
+        Process Responses API response and extract content and reasoning.
+        Stores reasoning in self.last_reasoning for later use.
         
         Args:
-            response: OpenAI API response object
+            response: OpenAI Responses API response object
             max_tokens: Maximum tokens requested
             latency_ms: Request latency in milliseconds
             
@@ -132,42 +142,90 @@ class SimpleLLMAgent(BaseAgent):
         Raises:
             LLMEmptyResponseError: If response is empty or invalid
         """
-        message = response.choices[0].message
-        content = message.content
+        # Responses API structure: response.output[0] contains the output item
+        if not hasattr(response, 'output') or not response.output or len(response.output) == 0:
+            raise LLMEmptyResponseError(
+                self.player.player_number,
+                "llm_api_call",
+                f"LLM API returned invalid response structure for Player {self.player.player_number}"
+            )
+        
+        output_item = response.output[0]
+        
+        # Extract content from output item
+        # Responses API: content can be in output_item.content or we need to check the actual structure
+        content = None
+        
+        # Try output_item.content first (most common)
+        if hasattr(output_item, 'content') and output_item.content is not None:
+            if isinstance(output_item.content, str):
+                content = output_item.content
+            elif hasattr(output_item.content, '__str__'):
+                content = str(output_item.content)
+        
+        # Check if there's a text attribute on the output_item
+        if (not content or content.strip() == "") and hasattr(output_item, 'text') and output_item.text:
+            if isinstance(output_item.text, str):
+                content = output_item.text
+        
+        # Check response-level text fields
+        if (not content or content.strip() == "") and hasattr(response, 'output_text'):
+            output_text = response.output_text
+            # output_text might be a config object, check if it has actual text
+            if isinstance(output_text, str):
+                content = output_text
+            elif hasattr(output_text, 'text'):
+                content = output_text.text
+        
+        # Last resort: try to get any string representation
+        if (not content or content.strip() == "") and hasattr(output_item, '__str__'):
+            content_str = str(output_item)
+            # Only use if it looks like actual content (not just object representation)
+            if content_str and not content_str.startswith('<') and len(content_str) > 10:
+                content = content_str
+        
         if content is None:
             content = ""
         content = content.strip()
         
-        # Extract reasoning if available (for reasoning models like gpt-5)
-        # Try multiple possible locations for reasoning content
+        # Extract reasoning summary from output item
+        # Structure: response.output[0].summary[0].text
         reasoning = None
         try:
-            # Check message.reasoning_content (most common for gpt-5 models)
-            if hasattr(message, 'reasoning_content') and message.reasoning_content:
-                reasoning = message.reasoning_content
-            # Check message.reasoning (alternative structure)
-            elif hasattr(message, 'reasoning') and message.reasoning:
-                if isinstance(message.reasoning, str):
-                    reasoning = message.reasoning
-                elif hasattr(message.reasoning, 'content'):
-                    reasoning = message.reasoning.content
-                elif isinstance(message.reasoning, list) and len(message.reasoning) > 0:
-                    # Handle list of reasoning items
-                    first_item = message.reasoning[0]
-                    if isinstance(first_item, str):
-                        reasoning = first_item
-                    elif hasattr(first_item, 'text'):
-                        reasoning = first_item.text
-                    elif hasattr(first_item, 'content'):
-                        reasoning = first_item.content
-            # Check response-level reasoning
-            elif hasattr(response, 'reasoning') and response.reasoning:
-                if isinstance(response.reasoning, str):
+            # Check output_item.summary first (most common location)
+            if hasattr(output_item, 'summary') and output_item.summary:
+                summary_list = output_item.summary
+                if isinstance(summary_list, list) and len(summary_list) > 0:
+                    first_summary = summary_list[0]
+                    if hasattr(first_summary, 'text') and first_summary.text:
+                        reasoning = first_summary.text
+                    elif isinstance(first_summary, str) and first_summary.strip():
+                        reasoning = first_summary
+                    elif hasattr(first_summary, 'content') and first_summary.content:
+                        reasoning = first_summary.content
+                elif isinstance(summary_list, str) and summary_list.strip():
+                    reasoning = summary_list
+                elif hasattr(summary_list, 'text') and summary_list.text:
+                    reasoning = summary_list.text
+            
+            # Also check response-level reasoning (some API versions)
+            if not reasoning and hasattr(response, 'reasoning') and response.reasoning:
+                if isinstance(response.reasoning, str) and response.reasoning.strip():
                     reasoning = response.reasoning
-                elif hasattr(response.reasoning, 'content'):
-                    reasoning = response.reasoning.content
-        except Exception:
+                elif hasattr(response.reasoning, 'text') and response.reasoning.text:
+                    reasoning = response.reasoning.text
+                elif hasattr(response.reasoning, 'summary'):
+                    reasoning_obj = response.reasoning.summary
+                    if isinstance(reasoning_obj, list) and len(reasoning_obj) > 0:
+                        if hasattr(reasoning_obj[0], 'text'):
+                            reasoning = reasoning_obj[0].text
+                        elif isinstance(reasoning_obj[0], str):
+                            reasoning = reasoning_obj[0]
+                    elif isinstance(reasoning_obj, str):
+                        reasoning = reasoning_obj
+        except Exception as e:
             # If any error occurs during reasoning extraction, just continue without it
+            # Don't log errors to avoid spam, but could add debug logging here if needed
             pass
         
         # Store reasoning for later use in context_data
@@ -180,14 +238,25 @@ class SimpleLLMAgent(BaseAgent):
         else:
             self.last_reasoning = None
         
-        # Emit metadata
-        if self.event_emitter and response.usage:
+        # Emit metadata (Responses API uses input_tokens/output_tokens instead of prompt_tokens/completion_tokens)
+        if self.event_emitter and hasattr(response, 'usage') and response.usage:
+            usage = response.usage
+            # Responses API uses input_tokens and output_tokens
+            # Fallback to prompt_tokens/completion_tokens for compatibility
+            prompt_tokens = getattr(usage, 'input_tokens', None) or getattr(usage, 'prompt_tokens', 0) or 0
+            completion_tokens = getattr(usage, 'output_tokens', None) or getattr(usage, 'completion_tokens', 0) or 0
+            total_tokens = getattr(usage, 'total_tokens', 0) or 0
+            
+            # If total_tokens is not available, try to calculate it
+            if total_tokens == 0 and (prompt_tokens > 0 or completion_tokens > 0):
+                total_tokens = prompt_tokens + completion_tokens
+            
             self.event_emitter.emit_llm_metadata(
                 self.player.player_number,
                 "llm_api_call",
-                response.usage.prompt_tokens,
-                response.usage.completion_tokens,
-                response.usage.total_tokens,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
                 latency_ms,
                 self.model
             )
@@ -195,9 +264,7 @@ class SimpleLLMAgent(BaseAgent):
         # Empty response is a fatal error
         if not content:
             error_details = f"Model: {self.model}, Max tokens: {max_tokens}"
-            if hasattr(response.choices[0], 'finish_reason'):
-                error_details += f", Finish reason: {response.choices[0].finish_reason}"
-            if response.usage:
+            if hasattr(response, 'usage') and response.usage:
                 error_details += f", Usage: {response.usage}"
             
             raise LLMEmptyResponseError(
@@ -221,7 +288,7 @@ class SimpleLLMAgent(BaseAgent):
             
             # Track latency
             start_time = time.time()
-            response = await self.async_client.chat.completions.create(**api_params)
+            response = await self.async_client.responses.create(**api_params)
             latency_ms = (time.time() - start_time) * 1000
             
             return self._process_llm_response(response, max_tokens, latency_ms)
@@ -238,7 +305,7 @@ class SimpleLLMAgent(BaseAgent):
     
     def _call_llm(self, prompt: str, max_tokens: Optional[int] = None, temperature: Optional[float] = None) -> str:
         """
-        Call OpenAI API with the given prompt.
+        Call OpenAI Responses API with the given prompt.
         
         Args:
             prompt: The prompt to send
@@ -257,7 +324,7 @@ class SimpleLLMAgent(BaseAgent):
             
             # Track latency
             start_time = time.time()
-            response = self.client.chat.completions.create(**api_params)
+            response = self.client.responses.create(**api_params)
             latency_ms = (time.time() - start_time) * 1000
             
             return self._process_llm_response(response, max_tokens, latency_ms)
@@ -641,6 +708,8 @@ class SimpleLLMAgent(BaseAgent):
             "- Red Team (Civilians) wins when all Mafia are eliminated",
             "- Black Team (Mafia) wins when numbers are equal or Mafia outnumber Civilians",
             "- Roles are NOT revealed when players are eliminated",
+            "- Roles are NOT revealed at the end of the game",
+            "- You can claim to have any role (both when it's true or false) - role claiming is allowed",
             "- Games typically end in 2-4 rounds, so early decisions are critical",
             "- Night kills account for ~50% of eliminations - they are very powerful",
             "- IMPORTANT: Once a nomination is made, it cannot be withdrawn",
@@ -768,6 +837,7 @@ class SimpleLLMAgent(BaseAgent):
                 "FINAL SPEECH:",
                 "- You have been eliminated from the game",
                 "- This is your final opportunity to speak",
+                "- Target length: 100-150 words",
                 "- You can share your thoughts, accuse others, or reveal information",
                 "- End your speech with 'PASS' or 'THANK YOU'",
                 "",
@@ -779,7 +849,7 @@ class SimpleLLMAgent(BaseAgent):
             
             prompt_parts.extend([
                 "YOUR TURN TO SPEAK:",
-                "- You have up to 200 words",
+                "- Target length: 100-150 words",
                 "- You can nominate a player by saying 'I nominate player number X'",
                 "- IMPORTANT: Once a nomination is made, it cannot be withdrawn - choose carefully",
                 "- End your speech with 'PASS' or 'THANK YOU'",
