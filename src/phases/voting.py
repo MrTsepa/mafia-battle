@@ -64,9 +64,14 @@ class VotingHandler:
             else:
                 vote_choice = agent.get_vote_choice(context)
             
-            # Add reasoning to context_data if available (after LLM call)
-            if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+            # Add reasoning to context_data (after LLM call)
+            # Always create context_data for LLM agents to show reasoning section in UI
+            if context_data is None:
+                context_data = {}
+            if hasattr(agent, 'last_reasoning') and agent.last_reasoning:
                 context_data["reasoning"] = agent.last_reasoning
+            elif "reasoning" not in context_data:
+                context_data["reasoning"] = None  # Explicitly set to None so UI knows to show message
             
             return player_num, vote_choice, context_data
         
@@ -270,9 +275,14 @@ class VotingHandler:
             else:
                 vote = agent.get_vote_choice(context)
             
-            # Add reasoning to context_data if available (after LLM call)
-            if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+            # Add reasoning to context_data (after LLM call)
+            # Always create context_data for LLM agents to show reasoning section in UI
+            if context_data is None:
+                context_data = {}
+            if hasattr(agent, 'last_reasoning') and agent.last_reasoning:
                 context_data["reasoning"] = agent.last_reasoning
+            elif "reasoning" not in context_data:
+                context_data["reasoning"] = None  # Explicitly set to None so UI knows to show message
             
             return player_num, vote, context_data
         
@@ -364,9 +374,14 @@ class VotingHandler:
                         except:
                             pass
                         
-                        # Add reasoning to context_data if available (after LLM call)
-                        if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+                        # Add reasoning to context_data (after LLM call)
+                        # Always set reasoning field for LLM agents to show reasoning section in UI
+                        if context_data is None:
+                            context_data = {}
+                        if hasattr(agent, 'last_reasoning') and agent.last_reasoning:
                             context_data["reasoning"] = agent.last_reasoning
+                        elif "reasoning" not in context_data:
+                            context_data["reasoning"] = None  # Explicitly set to None so UI knows to show message
                         
                         self.event_emitter.emit_speech(target, final_speech, self.game_state.day_number, context_data)
         else:

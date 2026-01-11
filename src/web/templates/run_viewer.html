@@ -665,28 +665,34 @@
             
             const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
             const hasContext = contextData && contextData.prompt;
-            const hasReasoning = contextData && contextData.reasoning;
+            const hasReasoning = contextData && contextData.reasoning && contextData.reasoning !== null;
+            const isLLMAgent = hasContext || (contextData && contextData.hasOwnProperty('reasoning'));
             
             let html = `
                 <div class="event-time">${timeStr}</div>
                 <div class="event-content">${escapeHtml(message)}</div>
             `;
             
-            if (hasContext || hasReasoning) {
+            if (isLLMAgent) {
                 const contextId = `context-${type}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
                 const promptText = contextData.prompt || '';
                 const reasoningText = contextData.reasoning || '';
+                const showReasoning = isLLMAgent; // Always show reasoning section for LLM agents
                 html += `
                     <button class="speech-expand-btn" onclick="toggleContext('${contextId}')">
                         Show LLM Context
                     </button>
                     <div id="${contextId}" class="context-panel" style="display: none;">
-                        ${hasReasoning ? `
+                        ${showReasoning ? `
                             <div class="context-header">Model Reasoning:</div>
-                            <pre class="reasoning-text">${escapeHtml(reasoningText)}</pre>
+                            ${hasReasoning ? `
+                                <pre class="reasoning-text">${escapeHtml(reasoningText)}</pre>
+                            ` : `
+                                <pre class="reasoning-text" style="color: #999; font-style: italic;">No reasoning available</pre>
+                            `}
                         ` : ''}
                         ${hasContext ? `
-                            <div class="context-header" ${hasReasoning ? 'style="margin-top: 12px;"' : ''}>LLM Prompt Context:</div>
+                            <div class="context-header" ${showReasoning ? 'style="margin-top: 12px;"' : ''}>LLM Prompt Context:</div>
                             <pre>${escapeHtml(promptText)}</pre>
                         ` : ''}
                     </div>
@@ -717,7 +723,8 @@
             
             const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
             const hasContext = data.context && data.context.prompt;
-            const hasReasoning = data.context && data.context.reasoning;
+            const hasReasoning = data.context && data.context.reasoning && data.context.reasoning !== null;
+            const isLLMAgent = hasContext || (data.context && data.context.hasOwnProperty('reasoning'));
             const contextId = `context-${data.player_number}-${data.day_number || '?'}-${++contextCounter}`;
             
             let html = `
@@ -727,20 +734,25 @@
                 </div>
             `;
             
-            if (hasContext || hasReasoning) {
+            if (isLLMAgent) {
                 const promptText = data.context.prompt || '';
                 const reasoningText = data.context.reasoning || '';
+                const showReasoning = isLLMAgent; // Always show reasoning section for LLM agents
                 html += `
                     <button class="speech-expand-btn" onclick="toggleContext('${contextId}')">
                         Show LLM Context
                     </button>
                     <div id="${contextId}" class="context-panel" style="display: none;">
-                        ${hasReasoning ? `
+                        ${showReasoning ? `
                             <div class="context-header">Model Reasoning:</div>
-                            <pre class="reasoning-text">${escapeHtml(reasoningText)}</pre>
+                            ${hasReasoning ? `
+                                <pre class="reasoning-text">${escapeHtml(reasoningText)}</pre>
+                            ` : `
+                                <pre class="reasoning-text" style="color: #999; font-style: italic;">No reasoning available</pre>
+                            `}
                         ` : ''}
                         ${hasContext ? `
-                            <div class="context-header" ${hasReasoning ? 'style="margin-top: 12px;"' : ''}>LLM Prompt Context:</div>
+                            <div class="context-header" ${showReasoning ? 'style="margin-top: 12px;"' : ''}>LLM Prompt Context:</div>
                             <pre>${escapeHtml(promptText)}</pre>
                         ` : ''}
                     </div>

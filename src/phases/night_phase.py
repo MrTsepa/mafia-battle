@@ -52,9 +52,14 @@ class NightPhaseHandler:
                 
                 action = agent.get_night_action(context)
                 
-                # Add reasoning to context_data if available (after LLM call)
-                if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+                # Add reasoning to context_data (after LLM call)
+                # Always create context_data for LLM agents to show reasoning section in UI
+                if context_data is None:
+                    context_data = {}
+                if hasattr(agent, 'last_reasoning') and agent.last_reasoning:
                     context_data["reasoning"] = agent.last_reasoning
+                elif "reasoning" not in context_data:
+                    context_data["reasoning"] = None  # Explicitly set to None so UI knows to show message
                 
                 if action.get("type") == "kill_claim":
                     target = action.get("target")
@@ -113,9 +118,14 @@ class NightPhaseHandler:
         
         action = decision_agent.get_night_action(context)
         
-        # Add reasoning to context_data if available (after LLM call)
-        if context_data and hasattr(decision_agent, 'last_reasoning') and decision_agent.last_reasoning:
+        # Add reasoning to context_data (after LLM call)
+        # Always create context_data for LLM agents to show reasoning section in UI
+        if context_data is None:
+            context_data = {}
+        if hasattr(decision_agent, 'last_reasoning') and decision_agent.last_reasoning:
             context_data["reasoning"] = decision_agent.last_reasoning
+        elif "reasoning" not in context_data:
+            context_data["reasoning"] = None  # Explicitly set to None so UI knows to show message
         
         if action.get("type") == "kill_decision" or "kill_decision" in action:
             target = action.get("kill_decision") or action.get("target")
@@ -178,9 +188,14 @@ class NightPhaseHandler:
         
         action = agent.get_night_action(context)
         
-        # Add reasoning to context_data if available (after LLM call)
-        if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+        # Add reasoning to context_data (after LLM call)
+        # Always create context_data for LLM agents to show reasoning section in UI
+        if context_data is None:
+            context_data = {}
+        if hasattr(agent, 'last_reasoning') and agent.last_reasoning:
             context_data["reasoning"] = agent.last_reasoning
+        elif "reasoning" not in context_data:
+            context_data["reasoning"] = None  # Explicitly set to None so UI knows to show message
         
         if action.get("type") == "don_check":
             target = action.get("target")
@@ -239,9 +254,14 @@ class NightPhaseHandler:
         
         action = agent.get_night_action(context)
         
-        # Add reasoning to context_data if available (after LLM call)
-        if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+        # Add reasoning to context_data (after LLM call)
+        # Always create context_data for LLM agents to show reasoning section in UI
+        if context_data is None:
+            context_data = {}
+        if hasattr(agent, 'last_reasoning') and agent.last_reasoning:
             context_data["reasoning"] = agent.last_reasoning
+        elif "reasoning" not in context_data:
+            context_data["reasoning"] = None  # Explicitly set to None so UI knows to show message
         
         if action.get("type") == "sheriff_check":
             target = action.get("target")
@@ -353,9 +373,14 @@ class NightPhaseHandler:
                         except:
                             pass
                     
-                    # Add reasoning to context_data if available (after LLM call)
-                    if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+                    # Add reasoning to context_data (after LLM call)
+                    # Always create context_data for LLM agents to show reasoning section in UI
+                    if context_data is None:
+                        context_data = {}
+                    if hasattr(agent, 'last_reasoning') and agent.last_reasoning:
                         context_data["reasoning"] = agent.last_reasoning
+                    elif "reasoning" not in context_data:
+                        context_data["reasoning"] = None  # Explicitly set to None so UI knows to show message
                     
                     self.event_emitter.emit_speech(killed, final_speech, self.game_state.day_number, context_data)
         

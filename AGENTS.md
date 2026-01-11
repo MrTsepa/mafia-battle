@@ -1,5 +1,18 @@
 # Mafia Battle - Cursor Rules
 
+## Environment Variables and API Keys
+
+- **OpenAI API Key**: The OpenAI API key is stored in the `.env` file
+- **Using dotenv**: When accessing API keys (e.g., `OPENAI_API_KEY`), always use `python-dotenv` to load environment variables from `.env`
+- **Implementation**: Import and call `load_dotenv()` from the `dotenv` package before accessing environment variables
+- **Example**: `main.py` already calls `load_dotenv()` at the top. If creating new scripts that need API keys, ensure `load_dotenv()` is called first:
+  ```python
+  from dotenv import load_dotenv
+  load_dotenv()
+  import os
+  api_key = os.getenv("OPENAI_API_KEY")
+  ```
+
 ## Python Environment
 
 - Use **uv** for environment management and dependency installation

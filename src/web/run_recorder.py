@@ -33,11 +33,24 @@ class RunRecorder:
             The run name (directory name)
         """
         if run_name is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            run_name = f"run_{timestamp}"
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            base_name = f"run_{timestamp}"
+        else:
+            base_name = run_name
         
-        self.current_run_dir = self.runs_dir / run_name
-        self.current_run_dir.mkdir(exist_ok=True)
+        # Ensure unique run directory, even across parallel processes
+        attempt = 0
+        while True:
+            suffix = f"_{attempt}" if attempt > 0 else ""
+            candidate_name = f"{base_name}{suffix}"
+            candidate_dir = self.runs_dir / candidate_name
+            try:
+                candidate_dir.mkdir(exist_ok=False)
+                run_name = candidate_name
+                self.current_run_dir = candidate_dir
+                break
+            except FileExistsError:
+                attempt += 1
         
         self.events_file = self.current_run_dir / "events.jsonl"
         self.metadata_file = self.current_run_dir / "metadata.json"
@@ -168,4 +181,3 @@ class RunRecorder:
             runs.append(run_info)
         
         return runs
-

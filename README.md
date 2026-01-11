@@ -59,6 +59,8 @@ OPENAI_API_KEY=your_key_here
 ANTHROPIC_API_KEY=your_key_here  # Optional
 ```
 
+**Note:** The OpenAI API key is stored in the `.env` file. The project uses `python-dotenv` to load environment variables from `.env`. When accessing API keys in code, ensure `load_dotenv()` is called (already done in `main.py`). If you create new scripts that need API keys, import and call `load_dotenv()` from the `dotenv` package.
+
 4. Run a game:
 ```bash
 uv run python main.py

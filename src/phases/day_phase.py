@@ -5,7 +5,7 @@ Day phase handler for discussion and nominations.
 from typing import List, Optional, Dict, TYPE_CHECKING
 from ..core import GameState, GamePhase, Player, Judge
 from ..core.judge import NominationResult
-from ..agents import BaseAgent
+from ..agents import BaseAgent, SimpleLLMAgent
 
 if TYPE_CHECKING:
     from ..web.event_emitter import EventEmitter
@@ -71,9 +71,16 @@ class DayPhaseHandler:
         
         speech = agent.get_day_speech(context)
         
-        # Add reasoning to context_data if available (after LLM call)
-        if context_data and hasattr(agent, 'last_reasoning') and agent.last_reasoning:
-            context_data["reasoning"] = agent.last_reasoning
+        # Add reasoning to context_data (after LLM call)
+        # Always create context_data for LLM agents to show reasoning section in UI
+        if hasattr(agent, 'build_strategic_prompt'):
+            if context_data is None:
+                context_data = {}
+            # Add reasoning if available, otherwise set to None so UI can show "No reasoning available"
+            if hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+                context_data["reasoning"] = agent.last_reasoning
+            elif "reasoning" not in context_data:
+                context_data["reasoning"] = None  # Explicitly set to None so UI knows to show message
         
         # Validate speech ending
         if not self.judge.validate_speech_ending(speech):
@@ -182,6 +189,43 @@ class DayPhaseHandler:
                 day_number=self.game_state.day_number,
                 voters=voters
             )
+            # Collect final speech from eliminated player
+            player = self.game_state.get_player(target)
+            if player and target in agents:
+                self.judge.announce(f"Player {target} has been eliminated. This is your final speech.")
+                agent = agents[target]
+                context = agent.build_context(self.game_state)
+                final_speech = agent.get_final_speech(context)
+                
+                # Add to player history
+                player.add_speech(final_speech)
+                
+                # Emit final speech event
+                if self.event_emitter:
+                    # Capture context for LLM agents
+                    context_data = None
+                    if isinstance(agent, SimpleLLMAgent):
+                        try:
+                            prompt = agent.build_strategic_prompt(context, "final_speech")
+                            context_data = {
+                                "prompt": prompt,
+                                "player_role": agent.player.role.role_type.value,
+                                "player_team": agent.player.role.team.value
+                            }
+                        except:
+                            pass
+                    
+                    # Add reasoning to context_data (after LLM call)
+                    # Always create context_data for LLM agents to show reasoning section in UI
+                    if context_data is None:
+                        context_data = {}
+                    if hasattr(agent, 'last_reasoning') and agent.last_reasoning:
+                        context_data["reasoning"] = agent.last_reasoning
+                    elif "reasoning" not in context_data:
+                        context_data["reasoning"] = None  # Explicitly set to None so UI knows to show message
+                    
+                    self.event_emitter.emit_speech(target, final_speech, self.game_state.day_number, context_data)
+            
             # After elimination, check if game continues, then go to night
             if self.game_state.phase != GamePhase.GAME_OVER:
                 self.judge.start_night()

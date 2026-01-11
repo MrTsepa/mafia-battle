@@ -91,17 +91,25 @@ class SimpleLLMAgent(BaseAgent):
         Returns:
             Dictionary of API parameters
         """
-        # Map reasoning_effort from config to reasoning summary level
-        # reasoning_effort: "low" -> "concise", "medium" -> "auto", "high" -> "detailed"
-        reasoning_summary = "auto"  # Default
+        # Map reasoning_effort from config to reasoning parameters
+        # reasoning_effort: "low" -> effort="low", summary="concise"
+        #                  "medium" -> effort="medium", summary="auto"  
+        #                  "high" -> effort="high", summary="auto"
+        # Note: summary should typically be "auto" to get actual reasoning text
+        reasoning_effort_value = "medium"  # Default effort
+        reasoning_summary = "auto"  # Always use "auto" for summary to get reasoning text
+        
         if self.reasoning_effort:
             effort_lower = self.reasoning_effort.lower()
             if effort_lower == "low":
-                reasoning_summary = "concise"
+                reasoning_effort_value = "low"
+                reasoning_summary = "auto"  # Use "auto" to get reasoning text
             elif effort_lower == "medium":
+                reasoning_effort_value = "medium"
                 reasoning_summary = "auto"
             elif effort_lower == "high":
-                reasoning_summary = "detailed"
+                reasoning_effort_value = "high"
+                reasoning_summary = "auto"  # Use "auto" even for high effort
         
         api_params: Dict[str, Any] = {
             "model": self.model,
@@ -109,7 +117,10 @@ class SimpleLLMAgent(BaseAgent):
                 {"role": "system", "content": SYSTEM_MESSAGE},
                 {"role": "user", "content": prompt}
             ],
-            "reasoning": {"summary": reasoning_summary}  # Use reasoning_effort from config
+            "reasoning": {
+                "effort": reasoning_effort_value,
+                "summary": reasoning_summary
+            }
         }
         
         selected_temperature = temperature if temperature is not None else self.temperature
@@ -204,14 +215,18 @@ class SimpleLLMAgent(BaseAgent):
                     elif hasattr(first_summary, 'content') and first_summary.content:
                         reasoning = first_summary.content
                 elif isinstance(summary_list, str) and summary_list.strip():
-                    reasoning = summary_list
+                    # If summary is a string, use it directly (but check it's not just "detailed"/"auto"/"concise")
+                    if summary_list.lower() not in ["detailed", "auto", "concise"]:
+                        reasoning = summary_list
                 elif hasattr(summary_list, 'text') and summary_list.text:
                     reasoning = summary_list.text
             
             # Also check response-level reasoning (some API versions)
             if not reasoning and hasattr(response, 'reasoning') and response.reasoning:
                 if isinstance(response.reasoning, str) and response.reasoning.strip():
-                    reasoning = response.reasoning
+                    # Don't use if it's just the summary level string
+                    if response.reasoning.lower() not in ["detailed", "auto", "concise"]:
+                        reasoning = response.reasoning
                 elif hasattr(response.reasoning, 'text') and response.reasoning.text:
                     reasoning = response.reasoning.text
                 elif hasattr(response.reasoning, 'summary'):
@@ -220,9 +235,13 @@ class SimpleLLMAgent(BaseAgent):
                         if hasattr(reasoning_obj[0], 'text'):
                             reasoning = reasoning_obj[0].text
                         elif isinstance(reasoning_obj[0], str):
-                            reasoning = reasoning_obj[0]
+                            # Don't use if it's just the summary level string
+                            if reasoning_obj[0].lower() not in ["detailed", "auto", "concise"]:
+                                reasoning = reasoning_obj[0]
                     elif isinstance(reasoning_obj, str):
-                        reasoning = reasoning_obj
+                        # Don't use if it's just the summary level string
+                        if reasoning_obj.lower() not in ["detailed", "auto", "concise"]:
+                            reasoning = reasoning_obj
         except Exception as e:
             # If any error occurs during reasoning extraction, just continue without it
             # Don't log errors to avoid spam, but could add debug logging here if needed
