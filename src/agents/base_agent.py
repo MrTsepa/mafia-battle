@@ -198,33 +198,89 @@ class BaseAgent(ABC):
         # Second pass: assign remaining speeches to days in order
         # Distribute speeches evenly across days, ensuring each player has at most one speech per day
         speeches_per_day = {}
-        all_days = sorted(set(game_state.nominations.keys()) | {game_state.day_number})
+        
+        # Find all days that have occurred: from 1 to max day with any activity
+        # Include days with nominations, votes, eliminations, or current day
+        activity_days = [game_state.day_number]
+        if game_state.nominations:
+            activity_days.extend(game_state.nominations.keys())
+        if game_state.votes:
+            activity_days.extend(game_state.votes.keys())
+        for action in game_state.action_log:
+            if action["type"] == "player_eliminated" and action["data"].get("day_number"):
+                activity_days.append(action["data"]["day_number"])
+        
+        max_day_with_activity = max(activity_days) if activity_days else game_state.day_number
+        # Always include all days from 1 to max_day_with_activity (at least day 1)
+        all_days = list(range(1, max(max_day_with_activity, 1) + 1))
         for d in all_days:
             speeches_per_day[d] = 0
         
+        # Group speeches by player to assign them sequentially
+        # Preserve original order by sorting by index
+        speeches_by_player = {}  # {player_num: [speech_data]}
         for speech_data in all_speeches:
             if speech_data.get("day") is None:
                 player_num = speech_data["player"]
-                # Find a day where this player hasn't spoken yet
+                if player_num not in speeches_by_player:
+                    speeches_by_player[player_num] = []
+                speeches_by_player[player_num].append(speech_data)
+        
+        # Sort speeches by player by their original index to preserve order
+        for player_num in speeches_by_player:
+            speeches_by_player[player_num].sort(key=lambda s: s.get("index", 0))
+        
+        # Assign speeches sequentially: each player's speeches go to consecutive days
+        # starting from the first day they were alive
+        for player_num, unassigned_speeches in speeches_by_player.items():
+            # Find first day this player was alive (they could speak)
+            # A player is alive on day X if they weren't eliminated before day X
+            player = game_state.get_player(player_num)
+            if not player:
+                continue
+            
+            # Find elimination day for this player
+            elim_day = None
+            for action in game_state.action_log:
+                if action["type"] == "player_eliminated":
+                    if action["data"]["player"] == player_num:
+                        elim_day = action["data"].get("day_number")
+                        break
+            
+            # Determine which days this player was alive
+            # Player is alive on day X if elim_day is None or elim_day > X
+            available_days = [d for d in all_days if elim_day is None or elim_day > d]
+            
+            # Assign speeches sequentially to available days
+            # Each speech goes to the next available day where player hasn't spoken yet
+            # Each player should have at most one regular speech per day
+            for idx, speech_data in enumerate(unassigned_speeches):
+                # Find next day where this player hasn't spoken yet
                 day_for_speech = None
-                
-                # Try to assign to existing days first
-                for day in all_days:
+                for day in available_days:
+                    # Check if player has already spoken on this day (including final speeches)
                     if day not in player_speech_counts[player_num]:
                         day_for_speech = day
                         break
                 
-                # If player has spoken on all days, assign to day with fewest total speeches
+                # If all available days are used, this shouldn't happen normally
+                # (each player should have at most one speech per day they're alive)
+                # but if it does, assign to the day with fewest total speeches
                 if day_for_speech is None:
-                    day_for_speech = min(all_days, key=lambda d: speeches_per_day.get(d, 0))
+                    # This is an edge case - player has more speeches than days alive
+                    # Assign to the day with fewest total speeches to minimize impact
+                    day_for_speech = min(available_days, key=lambda d: speeches_per_day.get(d, 0)) if available_days else all_days[0]
                 
                 speech_data["day"] = day_for_speech
+                # Track that this player has spoken on this day
                 if day_for_speech not in player_speech_counts[player_num]:
                     player_speech_counts[player_num][day_for_speech] = 0
                 player_speech_counts[player_num][day_for_speech] += 1
                 speeches_per_day[day_for_speech] = speeches_per_day.get(day_for_speech, 0) + 1
-            else:
-                # Already assigned, count it
+        
+        # Count already assigned speeches
+        for speech_data in all_speeches:
+            if speech_data.get("day") is not None:
                 day = speech_data["day"]
                 speeches_per_day[day] = speeches_per_day.get(day, 0) + 1
         
@@ -249,21 +305,73 @@ class BaseAgent(ABC):
             history.append(speech_data)
         
         # Add nominations
+        # First, collect nomination rounds from action_log (for tie-break scenarios)
+        nomination_rounds_by_day = {}  # {day: [nomination_round_events]}
+        for action in game_state.action_log:
+            if action["type"] == "nomination_round":
+                day = action["data"].get("day")
+                if day:
+                    if day not in nomination_rounds_by_day:
+                        nomination_rounds_by_day[day] = []
+                    nomination_rounds_by_day[day].append(action["data"])
+        
+        # Add nomination rounds from action_log (chronologically ordered by round number)
+        for day in sorted(nomination_rounds_by_day.keys()):
+            rounds = sorted(nomination_rounds_by_day[day], key=lambda r: r.get("round", 0))
+            for round_data in rounds:
+                nominations = round_data.get("nominations", [])
+                for nom in nominations:
+                    history.append({
+                        "type": "nomination",
+                        "day": day,
+                        "target": nom,
+                        "round": round_data.get("round", 1),
+                        "is_tie_break": round_data.get("is_tie_break", False)
+                    })
+        
+        # Add current nominations (for days that don't have nomination rounds logged yet)
         for day, nominations in game_state.nominations.items():
-            for nom in nominations:
-                history.append({
-                    "type": "nomination",
-                    "day": day,
-                    "target": nom
-                })
+            # Skip if we already have nomination rounds for this day
+            if day not in nomination_rounds_by_day:
+                for nom in nominations:
+                    history.append({
+                        "type": "nomination",
+                        "day": day,
+                        "target": nom
+                    })
         
         # Add votes (public after voting)
+        # First, add vote rounds from action_log (for tie-break scenarios)
+        vote_rounds_by_day = {}  # {day: [vote_round_events]}
+        for action in game_state.action_log:
+            if action["type"] == "vote_round":
+                day = action["data"].get("day")
+                if day:
+                    if day not in vote_rounds_by_day:
+                        vote_rounds_by_day[day] = []
+                    vote_rounds_by_day[day].append(action["data"])
+        
+        # Add vote rounds from action_log (chronologically ordered by round number)
+        for day in sorted(vote_rounds_by_day.keys()):
+            rounds = sorted(vote_rounds_by_day[day], key=lambda r: r.get("round", 0))
+            for round_data in rounds:
+                history.append({
+                    "type": "votes",
+                    "day": day,
+                    "votes": round_data.get("votes", {}).copy(),
+                    "round": round_data.get("round", 1),
+                    "is_tie_break": round_data.get("is_tie_break", False)
+                })
+        
+        # Add current votes (for days that don't have vote rounds logged yet)
         for day, votes in game_state.votes.items():
-            history.append({
-                "type": "votes",
-                "day": day,
-                "votes": votes.copy()
-            })
+            # Skip if we already have vote rounds for this day
+            if day not in vote_rounds_by_day and votes:
+                history.append({
+                    "type": "votes",
+                    "day": day,
+                    "votes": votes.copy()
+                })
         
         # Add eliminations (with day information and voters)
         for action in game_state.action_log:

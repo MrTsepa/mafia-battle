@@ -160,39 +160,124 @@ def format_game_history_xml(context: 'AgentContext', include_current_day: bool =
             day_events[day] = []
         day_events[day].append(speech)
     
-    # Collect nominations
+    # Collect nominations from public_history (includes nomination rounds for tie-breaks)
+    nomination_rounds_by_day = {}  # {day: [nomination_events]}
+    for event in context.public_history:
+        if event.get("type") == "nomination":
+            day = event.get("day", current_day)
+            if not include_current_day and day == current_day:
+                continue
+            if day not in nomination_rounds_by_day:
+                nomination_rounds_by_day[day] = []
+            nomination_rounds_by_day[day].append(event)
+    
+    # Process nomination rounds chronologically (by round number)
+    for day in sorted(nomination_rounds_by_day.keys()):
+        # Group by round
+        nominations_by_round = {}  # {round: [events]}
+        for nom_event in nomination_rounds_by_day[day]:
+            round_num = nom_event.get("round", 1)
+            if round_num not in nominations_by_round:
+                nominations_by_round[round_num] = []
+            nominations_by_round[round_num].append(nom_event)
+        
+        if day not in day_events:
+            day_events[day] = []
+        
+        # Add nominations in round order
+        # Round 1 nominations should appear before votes, round 2 after first votes
+        for round_num in sorted(nominations_by_round.keys()):
+            round_noms = nominations_by_round[round_num]
+            is_tie_break = any(n.get("is_tie_break", False) for n in round_noms)
+            
+            # Deduplicate nominations within a round (keep first occurrence)
+            seen_targets = set()
+            unique_noms = []
+            for nom_event in round_noms:
+                target = nom_event.get("target")
+                if target not in seen_targets:
+                    seen_targets.add(target)
+                    unique_noms.append(nom_event)
+            
+            # Add round 1 nominations first (before any markers or round 2)
+            if round_num == 1 and not is_tie_break:
+                for nom_event in unique_noms:
+                    day_events[day].append(nom_event)
+            else:
+                # Add round marker if tie-break nominations (before the nominations)
+                if is_tie_break and round_num > 1:
+                    day_events[day].append({
+                        "type": "nomination_round_marker",
+                        "day": day,
+                        "round": round_num,
+                        "is_tie_break": True
+                    })
+                
+                for nom_event in unique_noms:
+                    day_events[day].append(nom_event)
+    
+    # Also add nominations from game_state for days without rounds (backward compatibility)
     for day, nominations in context.game_state.nominations.items():
         if not include_current_day and day == current_day:
             continue
-        if day not in day_events:
-            day_events[day] = []
-        for nom in nominations:
-            day_events[day].append({
-                "type": "nomination",
-                "day": day,
-                "target": nom
-            })
+        if day not in nomination_rounds_by_day:  # Only if not already processed
+            if day not in day_events:
+                day_events[day] = []
+            for nom in nominations:
+                day_events[day].append({
+                    "type": "nomination",
+                    "day": day,
+                    "target": nom
+                })
     
-    # Collect votes
-    for day, votes in context.game_state.votes.items():
-        if not include_current_day and day == current_day:
-            continue
-        if day not in day_events:
-            day_events[day] = []
-        # Group votes by target
-        vote_targets = {}
-        for voter, target in votes.items():
-            if target not in vote_targets:
-                vote_targets[target] = []
-            vote_targets[target].append(voter)
-        
-        for target, voters in vote_targets.items():
-            day_events[day].append({
-                "type": "vote",
-                "day": day,
-                "target": target,
-                "voters": voters
-            })
+    # Collect votes from public_history (includes vote rounds for tie-breaks)
+    vote_rounds_by_day = {}  # {day: [vote_round_events]}
+    for event in context.public_history:
+        if event.get("type") == "votes":
+            day = event.get("day", current_day)
+            if not include_current_day and day == current_day:
+                continue
+            if day not in vote_rounds_by_day:
+                vote_rounds_by_day[day] = []
+            vote_rounds_by_day[day].append(event)
+    
+    # Process vote rounds chronologically (by round number)
+    for day in sorted(vote_rounds_by_day.keys()):
+        rounds = sorted(vote_rounds_by_day[day], key=lambda r: (r.get("round", 0), r.get("is_tie_break", False)))
+        for vote_event in rounds:
+            votes = vote_event.get("votes", {})
+            is_tie_break = vote_event.get("is_tie_break", False)
+            round_num = vote_event.get("round", 1)
+            
+            if day not in day_events:
+                day_events[day] = []
+            
+            # Add round marker before tie-break votes
+            if is_tie_break and round_num > 1:
+                day_events[day].append({
+                    "type": "vote_round_marker",
+                    "day": day,
+                    "round": round_num,
+                    "is_tie_break": True
+                })
+            
+            # Group votes by target
+            vote_targets = {}
+            for voter, target in votes.items():
+                if target not in vote_targets:
+                    vote_targets[target] = []
+                vote_targets[target].append(voter)
+            
+            for target, voters in vote_targets.items():
+                vote_data = {
+                    "type": "vote",
+                    "day": day,
+                    "target": target,
+                    "voters": voters
+                }
+                if is_tie_break or round_num > 1:
+                    vote_data["is_tie_break"] = True
+                day_events[day].append(vote_data)
     
     # Collect eliminations (skip night kills - handled separately)
     for event_data in context.public_history:
@@ -237,18 +322,44 @@ def format_game_history_xml(context: 'AgentContext', include_current_day: bool =
             })
     
     # Sort events within each day/night by type order
-    # Order: speeches (0), nominations (1), votes (2), eliminations (3), final speeches (4)
+    # Order: speeches (0), nominations (1), votes round 1 (2), tie-break speeches (2.5), votes round 2/tie-break (2.6), eliminations (3), final speeches (4)
     def get_sort_key(event):
         event_type = event.get("type", "")
         if event_type == "speech":
             if event.get("is_final", False):
                 return (4, event.get("speech_num", 0), event.get("player", 0))
             else:
+                # Check if this is a tie-break speech (speech after votes but before tie-break votes)
+                # We'll use a heuristic: if there are tie-break votes for this day, speeches after first votes are tie-break
                 return (0, event.get("speech_num", 0), event.get("player", 0))
         elif event_type == "nomination":
-            return (1, 0, event.get("target", 0))
+            # Round 1 nominations come before votes (sort key 1)
+            # Round 2 nominations come after first votes but before tie-break votes (sort key 2.4)
+            round_num = event.get("round", 1)
+            if event.get("is_tie_break", False) or round_num > 1:
+                return (2.4, 0, event.get("target", 0))  # After first votes, before tie-break votes
+            else:
+                return (1, 0, event.get("target", 0))  # Round 1 nominations (before votes)
+        elif event_type == "nomination_round_marker":
+            # Markers appear after first votes but before tie-break nominations
+            round_num = event.get("round", 1)
+            if event.get("is_tie_break", False):
+                return (2.35, 0, 0)  # After first votes (2), before tie-break nominations (2.4)
+            else:
+                return (0.9, 0, 0)  # Just before regular nominations (1)
+        elif event_type == "vote_round_marker":
+            # Markers appear before the votes they mark
+            round_num = event.get("round", 1)
+            if event.get("is_tie_break", False):
+                return (2.55, 0, 0)  # Just before tie-break votes (2.6)
+            else:
+                return (1.9, 0, 0)  # Just before regular votes (2)
         elif event_type == "vote":
-            return (2, 0, event.get("target", 0))
+            # Tie-break votes come after regular votes
+            if event.get("is_tie_break", False):
+                return (2.6, 0, event.get("target", 0))
+            else:
+                return (2, 0, event.get("target", 0))
         elif event_type == "elimination":
             return (3, 0, event.get("player", 0))
         elif event_type == "night_kill":
@@ -291,11 +402,25 @@ def format_game_history_xml(context: 'AgentContext', include_current_day: bool =
                         speech_elem.set("type", "final")
                     speech_elem.text = event["text"]
                 
+                elif event["type"] == "nomination_round_marker":
+                    # Add a comment to mark the start of tie-break nominations
+                    comment_text = f"Tie-break nominations (Round {event.get('round', 2)})"
+                    comment = ET.Comment(comment_text)
+                    day_elem.append(comment)
+                
                 elif event["type"] == "nomination":
                     nom_elem = ET.SubElement(day_elem, "nomination", target=str(event["target"]))
                 
+                elif event["type"] == "vote_round_marker":
+                    # Add a comment to mark the start of a new vote round
+                    comment_text = f"Tie-break vote (Round {event.get('round', 2)})"
+                    comment = ET.Comment(comment_text)
+                    day_elem.append(comment)
+                
                 elif event["type"] == "vote":
                     votes_elem = ET.SubElement(day_elem, "votes", target=str(event["target"]))
+                    if event.get("is_tie_break", False):
+                        votes_elem.set("round", "2")
                     for voter in event["voters"]:
                         vote_elem = ET.SubElement(votes_elem, "vote", voter=str(voter))
                 
@@ -319,6 +444,12 @@ def format_game_history_xml(context: 'AgentContext', include_current_day: bool =
         """Format XML element with proper indentation and line wrapping."""
         indent = "  " * indent_level
         result = []
+        
+        # Handle XML comments (comments have tag == ET.Comment function)
+        if hasattr(elem, 'tag') and elem.tag is ET.Comment:
+            comment_text = elem.text or ""
+            result.append(f"{indent}<!--{comment_text}-->")
+            return result
         
         # Build opening tag
         tag_name = elem.tag

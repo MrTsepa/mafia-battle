@@ -534,7 +534,9 @@ RECENT GAME HISTORY:
 
 YOUR TURN TO SPEAK:
 - You have up to 200 words
-- You can nominate a player by saying 'I nominate player number X'
+- To nominate a player, you MUST use the exact format: 'I nominate player number X' (where X is the player number)
+- Alternative formats: 'I nominate number X' or 'I nominate player X' are also accepted
+- IMPORTANT: Only nominations using 'I nominate...' format will be registered. Other phrases like 'nominating' or 'counter-nominating' will NOT be recognized
 - End your speech with 'PASS' or 'THANK YOU'
 - Analyze voting patterns and suspicious behavior
 - If you're sheriff, be careful not to reveal your role

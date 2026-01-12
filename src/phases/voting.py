@@ -217,6 +217,15 @@ class VotingHandler:
         # Restrict nominations to only tied players for the revote
         day = self.game_state.day_number
         
+        # Store tie-break nominations before overwriting
+        if tied_players:
+            self.game_state._log_action("nomination_round", {
+                "day": day,
+                "round": 2,
+                "nominations": tied_players.copy(),
+                "is_tie_break": True
+            })
+        
         # Set nominations to only tied players for the revote
         self.game_state.nominations[day] = tied_players.copy()
         
@@ -228,6 +237,17 @@ class VotingHandler:
         self.judge.announce(f"Revote: You must vote between players {tied_players} only.")
         self.judge.start_voting()
         target = self.process_voting(agents)
+        
+        # Store tie-break votes for history (after revote completes)
+        tie_break_votes = self.game_state.votes.get(day, {}).copy()
+        if tie_break_votes:
+            self.game_state._log_action("vote_round", {
+                "day": day,
+                "round": 2,
+                "votes": tie_break_votes,
+                "is_tie_break": True,
+                "nominations": tied_players.copy()  # Include nominations for this round
+            })
         
         if target:
             return [target]
@@ -338,6 +358,29 @@ class VotingHandler:
         Run complete voting phase with tie-breaking if needed.
         """
         target = self.process_voting(agents)
+        
+        # If no target (tie), log the original vote round and nominations before tie-breaking
+        if not target:
+            day = self.game_state.day_number
+            original_votes = self.game_state.votes.get(day, {}).copy()
+            original_nominations = self.game_state.nominations.get(day, []).copy()
+            
+            # Log original nominations
+            if original_nominations:
+                self.game_state._log_action("nomination_round", {
+                    "day": day,
+                    "round": 1,
+                    "nominations": original_nominations
+                })
+            
+            # Log original vote round
+            if original_votes:
+                self.game_state._log_action("vote_round", {
+                    "day": day,
+                    "round": 1,
+                    "votes": original_votes,
+                    "nominations": original_nominations  # Include nominations for this round
+                })
         
         if target:
             voters = self._get_voters_for_target(target)

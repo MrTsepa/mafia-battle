@@ -775,13 +775,11 @@ class SimpleLLMAgent(BaseAgent):
         
         # Add game state
         alive_players = context.game_state.get_alive_players()
-        mafia_count = len(context.game_state.get_mafia_players())
-        civilian_count = len(context.game_state.get_civilian_players())
         
         prompt_parts.extend([
             f"CURRENT PHASE: {context.current_phase.value}",
             f"DAY: {context.game_state.day_number}, NIGHT: {context.game_state.night_number}",
-            f"ALIVE: {len(alive_players)} players ({mafia_count} mafia, {civilian_count} civilians)",
+            f"ALIVE: {len(alive_players)} players",
             "",
         ])
         
@@ -882,7 +880,9 @@ class SimpleLLMAgent(BaseAgent):
             prompt_parts.extend([
                 "YOUR TURN TO SPEAK:",
                 "- Target length: 100-150 words",
-                "- You can nominate a player by saying 'I nominate player number X'",
+                "- To nominate a player, you MUST use the exact format: 'I nominate player number X' (where X is the player number)",
+                "- Alternative formats: 'I nominate number X' or 'I nominate player X' are also accepted",
+                "- IMPORTANT: Only nominations using 'I nominate...' format will be registered. Other phrases like 'nominating' or 'counter-nominating' will NOT be recognized",
                 "- IMPORTANT: Once a nomination is made, it cannot be withdrawn - choose carefully",
                 "- End your speech with 'PASS' or 'THANK YOU'",
                 "- Analyze voting patterns and suspicious behavior",

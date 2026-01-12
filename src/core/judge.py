@@ -73,19 +73,17 @@ class Judge:
     def parse_nomination(self, speech: str, speaker_number: int) -> NominationResult:
         """
         Parse a nomination from speech text.
-        Looks for patterns like "I nominate player number X" or "Nominating number X"
+        Only accepts strict format: "I nominate player number X" or "I nominate number X" or "I nominate player X"
         """
         # Normalize speech
         speech_lower = speech.lower().strip()
         
-        # Patterns to match
+        # Only accept strict "I nominate..." patterns
+        # Must contain "I nominate" as a clear action statement (word boundaries prevent compound words)
         patterns = [
-            r"i nominate (?:player )?number (\d+)",
-            r"i nominate (?:player )?(\d+)",
-            r"nominating (?:player )?number (\d+)",
-            r"nominating (?:player )?(\d+)",
-            r"nominate (?:player )?number (\d+)",
-            r"nominate (?:player )?(\d+)",
+            r"\bi\s+nominate\s+player\s+number\s+(\d+)\b",  # "I nominate player number X"
+            r"\bi\s+nominate\s+number\s+(\d+)\b",  # "I nominate number X"
+            r"\bi\s+nominate\s+player\s+(\d+)\b",  # "I nominate player X"
         ]
         
         for pattern in patterns:

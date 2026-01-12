@@ -12,9 +12,7 @@ def test_parse_nomination_valid(judge):
     test_cases = [
         ("I nominate player number 5", 5),
         ("I nominate number 3", 3),
-        ("Nominating number 7", 7),
         ("I nominate player 2", 2),
-        ("nominate number 9", 9),
     ]
     
     for speech, expected_target in test_cases:
@@ -30,11 +28,15 @@ def test_parse_nomination_invalid(judge):
         "Let's vote for number 3",
         "Player 7 seems guilty",
         "I nominate player number 99",  # Invalid number
+        "Nominating number 7",  # Doesn't start with "I nominate"
+        "nominate number 9",  # Doesn't start with "I nominate"
+        "counter-nominating 2 reads like trying to redirect heat",  # Compound word, not a nomination
+        "I think counter-nominating 2 reads like trying to redirect heat",  # Descriptive phrase
     ]
     
     for speech in invalid_speeches:
         result = judge.parse_nomination(speech, 1)
-        assert not result.success or result.target is None
+        assert not result.success or result.target is None, f"Should not parse as nomination: {speech}"
 
 
 def test_process_nomination(judge, game_state):
