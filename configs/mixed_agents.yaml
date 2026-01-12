@@ -14,20 +14,11 @@ total_players: 10
 max_rounds: 10
 log_level: INFO
 
-# Speech limits (set to null for no limits)
-max_speech_tokens: null
-tie_break_speech_tokens: null
-
-# Time limits (set to null for no limits)
-night_action_timeout: null
-voting_window: null
-
 # LLM settings (only used by LLM agents)
 llm_model: gpt-4o-mini  # Lightweight model for faster responses
 llm_temperature: 0.7
 reasoning_effort: high
 max_retries: 3
-max_action_tokens: null  # No token cap for actions and voting
 
 # Judge announcements
 use_judge_announcements: true

@@ -10,20 +10,11 @@ from typing import Optional, Dict
 class GameConfig:
     """Configuration for game parameters."""
 
-    # Speech limits
-    max_speech_tokens: Optional[int] = None  # Unlimited tokens for speeches by default
-    tie_break_speech_tokens: Optional[int] = None  # Unlimited tokens for tie-break speeches
-
-    # Time limits (for LLM response time)
-    night_action_timeout: Optional[int] = None  # Unlimited time for night actions
-    voting_window: Optional[float] = None  # No voting window limit by default
-
     # LLM settings
     llm_model: str = "gpt-4"
     llm_temperature: float = 0.7
     reasoning_effort: Optional[str] = None  # For reasoning-capable models: "low", "medium", or "high"
     max_retries: int = 3
-    max_action_tokens: Optional[int] = None  # Unlimited tokens for night actions and voting
     
     # Game settings
     total_players: int = 10

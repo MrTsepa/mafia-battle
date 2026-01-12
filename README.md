@@ -77,9 +77,7 @@ uv run python viewer.py
 ## Configuration
 
 Key configurable parameters in `src/config/game_config.py`:
-- **LLM limits**: Optional `max_speech_tokens`, `tie_break_speech_tokens`, and `max_action_tokens` (no limits by default)
 - **LLM settings**: `llm_model`, `llm_temperature`
-- **Timing**: Optional `night_action_timeout`, `voting_window` (no time limits by default)
 - **Game limits**: `max_rounds` (maximum day/night cycles)
 - **Logging**: `log_level`
 

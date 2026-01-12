@@ -828,12 +828,20 @@ class SimpleLLMAgent(BaseAgent):
         
         # Add game history - structured XML format with publicly available information
         game_history_xml = format_game_history_xml(context, include_current_day=True)
-        if game_history_xml.strip():
+        # Check if game history has actual content (not just empty root tags)
+        has_content = game_history_xml.strip() and (
+            '<day' in game_history_xml or '<night' in game_history_xml
+        )
+        if has_content:
             prompt_parts.append("GAME HISTORY (structured format):")
             # Split XML into lines and indent each line
             xml_lines = game_history_xml.strip().split('\n')
             for line in xml_lines:
                 prompt_parts.append(line)
+            prompt_parts.append("")
+        else:
+            prompt_parts.append("GAME HISTORY (structured format):")
+            prompt_parts.append("Game history is empty - no events have occurred yet.")
             prompt_parts.append("")
         
         # Add alive players at the end
@@ -983,7 +991,7 @@ class SimpleLLMAgent(BaseAgent):
             The speech text
         """
         prompt = self.build_strategic_prompt(context, "speech")
-        response = self._call_llm(prompt, max_tokens=self.config.max_speech_tokens)
+        response = self._call_llm(prompt)
         return self._normalize_speech_ending(response)
     
     def get_final_speech(self, context: AgentContext) -> str:
@@ -997,7 +1005,7 @@ class SimpleLLMAgent(BaseAgent):
             The final speech text
         """
         prompt = self.build_strategic_prompt(context, "final_speech")
-        response = self._call_llm(prompt, max_tokens=self.config.max_speech_tokens)
+        response = self._call_llm(prompt)
         return self._normalize_speech_ending(response)
     
     def _handle_sheriff_check(self, context: AgentContext) -> Dict[str, Any]:
@@ -1012,7 +1020,7 @@ class SimpleLLMAgent(BaseAgent):
         """
         action = {}
         prompt = self.build_strategic_prompt(context, "sheriff_check")
-        response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
+        response = self._call_llm(prompt)
         
         target = self._extract_player_number(response, context)
         if target and target != self.player.player_number:
@@ -1046,7 +1054,7 @@ class SimpleLLMAgent(BaseAgent):
         """
         action = {}
         prompt = self.build_strategic_prompt(context, "kill_claim")
-        response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
+        response = self._call_llm(prompt)
         
         target = self._extract_player_number(response, context)
         if not target:
@@ -1071,7 +1079,7 @@ class SimpleLLMAgent(BaseAgent):
         """
         action = {}
         prompt = self.build_strategic_prompt(context, "kill_decision")
-        response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
+        response = self._call_llm(prompt)
         
         target = self._extract_player_number(response, context)
         if not target:
@@ -1095,7 +1103,7 @@ class SimpleLLMAgent(BaseAgent):
         """
         action = {}
         prompt = self.build_strategic_prompt(context, "don_check")
-        response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
+        response = self._call_llm(prompt)
         
         target = self._extract_player_number(response, context)
         if not target:
@@ -1133,7 +1141,7 @@ class SimpleLLMAgent(BaseAgent):
         """
         action = {}
         prompt = self.build_strategic_prompt(context, "kill_decision")
-        response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
+        response = self._call_llm(prompt)
         
         target = self._extract_player_number(response, context)
         if not target:
@@ -1277,7 +1285,7 @@ class SimpleLLMAgent(BaseAgent):
             Player number to vote against
         """
         prompt = self.build_strategic_prompt(context, "vote")
-        response = await self._call_llm_async(prompt, max_tokens=self.config.max_action_tokens)
+        response = await self._call_llm_async(prompt)
         return self._process_vote_choice(response, context)
     
     def get_vote_choice(self, context: AgentContext) -> int:
@@ -1291,5 +1299,5 @@ class SimpleLLMAgent(BaseAgent):
             Player number to vote against
         """
         prompt = self.build_strategic_prompt(context, "vote")
-        response = self._call_llm(prompt, max_tokens=self.config.max_action_tokens)
+        response = self._call_llm(prompt)
         return self._process_vote_choice(response, context)

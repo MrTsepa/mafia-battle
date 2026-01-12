@@ -129,14 +129,7 @@ class MafiaGame:
                         "max_rounds": self.config.max_rounds,
                         "random_seed": self.config.random_seed,
                         "use_judge_announcements": self.config.use_judge_announcements,
-                        "log_level": self.config.log_level,
-                        # Token limits
-                        "max_speech_tokens": self.config.max_speech_tokens,
-                        "tie_break_speech_tokens": self.config.tie_break_speech_tokens,
-                        "max_action_tokens": self.config.max_action_tokens,
-                        # Time limits
-                        "night_action_timeout": self.config.night_action_timeout,
-                        "voting_window": self.config.voting_window
+                        "log_level": self.config.log_level
                     }
                 })
         

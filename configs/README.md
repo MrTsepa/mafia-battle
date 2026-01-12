@@ -47,20 +47,11 @@ All configuration files support the following options:
 - `max_rounds`: Maximum number of day/night cycles before game ends (default: 10)
 - `log_level`: Logging level (default: "INFO")
 
-### Speech Limits
-- `max_speech_tokens`: Optional token cap per speech (default: unlimited)
-- `tie_break_speech_tokens`: Optional token cap for tie-break speech (default: unlimited)
-
-### Time Limits
-- `night_action_timeout`: Optional timeout for night actions in seconds (default: unlimited)
-- `voting_window`: Optional voting window duration in seconds (default: unlimited)
-
 ### LLM Settings
 - `llm_model`: LLM model name (default: "gpt-4")
 - `llm_temperature`: LLM temperature (default: 0.7)
 - `reasoning_effort`: Optional reasoning effort for gpt-5 models (`"low"`, `"medium"`, `"high"`)
 - `max_retries`: Maximum retries for LLM calls (default: 3)
-- `max_action_tokens`: Optional token cap for night actions and voting (default: unlimited)
 
 ### Judge Settings
 - `use_judge_announcements`: Whether to use judge announcements (default: true)

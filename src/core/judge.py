@@ -207,7 +207,6 @@ class Judge:
         """
         # Token count would require actual tokenization, simplified for now
         # In production, use tiktoken or similar
-        # The LLM call already respects max_speech_tokens, so this is just a pass-through
         
         return True, ""
     
